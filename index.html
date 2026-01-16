@@ -2,675 +2,533 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYNCWAVE | QuantumLock Engine</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SYNCWAVE v8 | REPAIRED</title>
+    <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Icons (Reliable Source) -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;500;700&family=Inter:wght@400;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
         
         body { 
-            font-family: 'Inter', sans-serif; 
-            background-color: #030303; 
+            background-color: #050505; 
             color: white; 
+            font-family: 'Inter', sans-serif;
             overflow: hidden;
         }
-        
-        .font-display { font-family: 'Space Grotesk', sans-serif; }
 
-        /* Animations */
-        @keyframes heartbeat {
-            0% { transform: scale(1); opacity: 0.5; }
-            50% { transform: scale(1.05); opacity: 0.8; }
-            100% { transform: scale(1); opacity: 0.5; }
-        }
-        .animate-heartbeat { animation: heartbeat 1s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-
-        /* Glass Panel */
+        /* Glass UI */
         .glass {
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(30, 30, 30, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
+
+        /* Slider */
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%;
+            background: #a855f7; margin-top: -8px; cursor: pointer; border: 2px solid white;
+        }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: #333; border-radius: 2px; }
+
+        /* Debug Log */
+        #debug-console {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 100px;
+            background: rgba(0,0,0,0.9); border-top: 1px solid #333;
+            font-family: monospace; font-size: 10px; color: #0f0;
+            padding: 8px; overflow-y: auto; z-index: 9999;
+            display: none; /* Hidden by default, toggleable */
+        }
+        .log-err { color: #ff5555; }
+        .log-info { color: #55ffff; }
         
-        /* Toggle Switch */
-        .toggle-checkbox:checked {
-            right: 0;
-            border-color: #a855f7;
-        }
-        .toggle-checkbox:checked + .toggle-label {
-            background-color: #a855f7;
-        }
-        
-        /* Hide Scrollbar */
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .hidden { display: none !important; }
     </style>
 </head>
-<body class="h-screen w-full flex flex-col items-center justify-center relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-900 via-[#050505] to-black">
+<body class="h-screen w-full flex items-center justify-center p-4">
 
-    <!-- Interface Container -->
-    <div id="app" class="relative z-10 w-full max-w-md h-full flex flex-col p-6">
+    <!-- GLOBAL ERROR HANDLER UI -->
+    <div id="crash-screen" class="hidden fixed inset-0 bg-red-900/90 z-[9999] flex flex-col items-center justify-center p-8 text-center">
+        <h1 class="text-2xl font-bold text-white mb-4">SYSTEM FAILURE</h1>
+        <p id="crash-reason" class="font-mono text-xs text-red-200 bg-black/50 p-4 rounded mb-4">Unknown Error</p>
+        <button onclick="location.reload()" class="bg-white text-red-900 px-6 py-3 rounded font-bold">RELOAD</button>
+    </div>
+
+    <!-- MAIN APP -->
+    <div id="app" class="w-full max-w-md h-full flex flex-col relative opacity-0 transition-opacity duration-500">
         
-        <!-- Header -->
-        <header class="flex justify-between items-end mb-8">
+        <!-- HEADER -->
+        <header class="flex justify-between items-center mb-8 pt-4">
             <div>
-                <h1 class="text-3xl font-display font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-600">
-                    SYNCWAVE
-                </h1>
-                <div class="flex items-center gap-2 mt-1">
-                    <div id="sync-dot" class="w-2 h-2 rounded-full bg-red-500"></div>
-                    <span id="sync-status" class="text-[10px] font-mono text-slate-500 uppercase tracking-widest">OFFLINE</span>
+                <h1 class="text-2xl font-black tracking-tighter text-white">SYNCWAVE</h1>
+                <div class="flex items-center gap-2">
+                    <div id="status-dot" class="w-2 h-2 rounded-full bg-yellow-500"></div>
+                    <p id="status-text" class="text-[10px] font-bold text-slate-500 tracking-widest">CONNECTING...</p>
                 </div>
             </div>
-            
-            <!-- Connection Stats (Mini) -->
-            <div class="text-right">
-                <div class="text-[10px] text-slate-600 font-mono">LATENCY</div>
-                <div id="ping-display" class="text-xs font-bold text-slate-400">-- ms</div>
-            </div>
+            <button onclick="App.toggleLog()" class="p-2 bg-slate-800 rounded-full text-slate-400">
+                <i data-lucide="terminal" class="w-4 h-4"></i>
+            </button>
         </header>
 
         <!-- VIEW: LOBBY -->
-        <div id="view-lobby" class="flex-1 flex flex-col justify-center gap-6 animate-fade-in">
+        <div id="view-lobby" class="flex-1 flex flex-col justify-center gap-6">
             <div class="space-y-2">
-                <label class="text-[10px] text-slate-500 font-bold uppercase tracking-wider ml-1">Identity</label>
-                <input type="text" id="username-input" class="w-full bg-white/5 border border-white/10 focus:border-purple-500/50 rounded-2xl px-5 py-4 text-white text-lg placeholder-slate-600 outline-none transition-all font-display" placeholder="DJ Name">
+                <label class="text-[10px] font-bold text-slate-500 uppercase">Your Name</label>
+                <input type="text" id="username-in" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-4 text-white font-bold outline-none focus:border-purple-500" placeholder="Enter DJ Name">
             </div>
 
             <div class="grid grid-cols-2 gap-4">
-                <button onclick="app.createRoom()" class="glass group p-6 rounded-3xl flex flex-col items-center justify-center gap-3 hover:bg-purple-500/10 hover:border-purple-500/30 transition-all active:scale-95">
-                    <div class="w-14 h-14 rounded-full bg-purple-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <i data-lucide="radio" class="w-6 h-6 text-purple-400"></i>
+                <button onclick="App.createRoom()" class="glass p-6 rounded-2xl flex flex-col items-center gap-3 hover:bg-purple-900/40 transition-all active:scale-95 group">
+                    <div class="w-12 h-12 bg-purple-600 rounded-full flex items-center justify-center shadow-lg shadow-purple-500/30 group-hover:scale-110 transition-transform">
+                        <i data-lucide="radio" class="w-6 h-6 text-white"></i>
                     </div>
-                    <span class="font-bold text-sm tracking-wide">HOST JAM</span>
+                    <span class="font-bold text-sm">HOST</span>
                 </button>
 
-                <button onclick="app.showJoin()" class="glass group p-6 rounded-3xl flex flex-col items-center justify-center gap-3 hover:bg-blue-500/10 hover:border-blue-500/30 transition-all active:scale-95">
-                    <div class="w-14 h-14 rounded-full bg-blue-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <i data-lucide="satellite" class="w-6 h-6 text-blue-400"></i>
+                <button onclick="App.showJoin()" class="glass p-6 rounded-2xl flex flex-col items-center gap-3 hover:bg-blue-900/40 transition-all active:scale-95 group">
+                    <div class="w-12 h-12 bg-slate-700 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <i data-lucide="headphones" class="w-6 h-6 text-white"></i>
                     </div>
-                    <span class="font-bold text-sm tracking-wide">JOIN JAM</span>
+                    <span class="font-bold text-sm">JOIN</span>
                 </button>
             </div>
 
-            <!-- Join Drawer -->
-            <div id="join-drawer" class="hidden space-y-2">
-                <div class="flex gap-2">
-                    <input type="text" id="room-code-input" class="flex-1 bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-white uppercase font-mono tracking-widest outline-none focus:border-blue-500/50" placeholder="ENTER CODE">
-                    <button onclick="app.joinRoom()" class="bg-blue-600 hover:bg-blue-500 text-white px-6 rounded-2xl font-bold transition-all">GO</button>
-                </div>
-            </div>
-            
-            <!-- Public List Preview -->
-            <div class="glass rounded-2xl p-4 min-h-[100px] flex flex-col">
-                <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2">LIVE NOW</span>
-                <div id="public-list" class="flex-1 space-y-2 overflow-y-auto max-h-[150px] no-scrollbar">
-                    <div class="text-center py-4 text-[10px] text-slate-700 animate-pulse">Scanning frequencies...</div>
-                </div>
+            <!-- Join Input -->
+            <div id="join-drawer" class="hidden flex gap-2 animate-bounce-in">
+                <input type="text" id="code-in" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white font-mono uppercase tracking-widest outline-none" placeholder="ROOM CODE">
+                <button onclick="App.joinRoom()" class="bg-blue-600 px-6 rounded-xl font-bold">GO</button>
             </div>
         </div>
 
         <!-- VIEW: PLAYER -->
-        <div id="view-player" class="hidden flex-1 flex flex-col relative">
+        <div id="view-player" class="hidden flex-1 flex-col relative">
             
-            <!-- Top Bar -->
-            <div class="flex justify-between items-start mb-6">
-                <div onclick="app.copyCode()" class="cursor-pointer">
-                    <p class="text-[9px] text-slate-500 font-bold uppercase">Frequency</p>
-                    <p id="room-code-display" class="text-xl font-mono font-bold text-white tracking-wider">----</p>
+            <!-- Info -->
+            <div class="glass p-4 rounded-2xl mb-6 flex justify-between items-center">
+                <div>
+                    <p class="text-[10px] text-slate-500 font-bold uppercase">FREQUENCY</p>
+                    <p id="room-display" class="text-xl font-mono font-bold text-white tracking-widest cursor-pointer" onclick="App.copyCode()">----</p>
                 </div>
                 <div class="text-right">
-                    <p class="text-[9px] text-slate-500 font-bold uppercase">Crowd</p>
-                    <p id="participant-count" class="text-sm font-bold text-purple-400">1 Connected</p>
+                    <p class="text-[10px] text-slate-500 font-bold uppercase">LATENCY</p>
+                    <p id="offset-display" class="text-xs font-bold text-blue-400">0ms</p>
                 </div>
             </div>
 
-            <!-- Central Visualizer -->
-            <div class="flex-1 flex flex-col items-center justify-center relative">
-                <div id="viz-glow" class="absolute w-64 h-64 bg-purple-600/20 rounded-full blur-[60px] opacity-0 transition-opacity duration-500"></div>
+            <!-- Visualizer -->
+            <div class="flex-1 flex flex-col items-center justify-center mb-8">
+                <div class="relative w-48 h-48 mb-6">
+                    <div id="viz-pulse" class="absolute inset-0 bg-purple-600 rounded-full opacity-0 blur-2xl transition-opacity duration-200"></div>
+                    <div class="absolute inset-0 bg-slate-900 rounded-full border-4 border-slate-800 flex items-center justify-center z-10 shadow-2xl overflow-hidden">
+                        <i data-lucide="music" class="w-20 h-20 text-slate-700"></i>
+                    </div>
+                </div>
+                <h2 id="track-name" class="text-xl font-bold text-white mb-1 text-center truncate w-full px-4">No Track Selected</h2>
+                <p id="track-status" class="text-xs font-mono text-slate-500 uppercase tracking-widest">Idle</p>
+            </div>
+
+            <!-- CONTROLS -->
+            <div class="mt-auto space-y-4">
                 
-                <div class="relative w-48 h-48">
-                    <!-- Album Art -->
-                    <div class="absolute inset-0 rounded-full overflow-hidden border-4 border-slate-800 shadow-2xl z-10">
-                        <img src="https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=2070&auto=format&fit=crop" class="w-full h-full object-cover opacity-80" alt="Art">
-                    </div>
-                    <!-- Spinner -->
-                    <div id="viz-spinner" class="absolute inset-[-10px] border-t-2 border-r-2 border-purple-500 rounded-full z-0 opacity-0 transition-opacity duration-500"></div>
-                </div>
-
-                <div class="mt-8 text-center space-y-1 w-full px-4">
-                    <h2 id="track-title" class="text-2xl font-display font-bold text-white truncate">Waiting for Signal...</h2>
-                    <p id="track-artist" class="text-sm text-slate-500">QuantumLock Engine Idle</p>
-                </div>
-            </div>
-
-            <!-- Lock Status -->
-            <div class="flex justify-center my-6">
-                <div class="glass px-4 py-2 rounded-full flex items-center gap-3">
-                    <div class="text-right">
-                        <p class="text-[8px] text-slate-500 font-bold uppercase">DRIFT</p>
-                        <p id="stat-drift" class="text-[10px] font-mono text-white">0.0ms</p>
-                    </div>
-                    <div class="h-6 w-[1px] bg-white/10"></div>
-                    <div class="text-left">
-                        <p class="text-[8px] text-slate-500 font-bold uppercase">CORRECTION</p>
-                        <p id="stat-rate" class="text-[10px] font-mono text-blue-400">1.00x</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Controls -->
-            <div class="space-y-4">
-                <!-- Host Controls -->
+                <!-- HOST -->
                 <div id="host-controls" class="hidden flex-col gap-3">
-                    <select id="track-select" onchange="app.selectTrack()" class="w-full bg-white/5 border border-white/10 text-sm px-4 py-3 rounded-xl outline-none text-white focus:border-purple-500/50">
-                        <option value="">Select Track...</option>
+                    <select id="track-select" onchange="App.selectTrack()" class="w-full bg-slate-800 text-sm px-4 py-4 rounded-xl border border-slate-700 text-white outline-none">
+                        <option value="">Select Music...</option>
                         <option value="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3">Neon Blade (Electronic)</option>
                         <option value="https://cdn.pixabay.com/download/audio/2022/03/10/audio_c8c8a73467.mp3">Night Drive (Lofi)</option>
-                        <option value="https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3">Epic Reveal (Cinematic)</option>
+                        <option value="https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3">Epic Cinematic (Orchestral)</option>
                     </select>
-                    <button id="play-btn" onclick="app.togglePlay()" class="w-full py-4 bg-white text-black rounded-xl font-bold tracking-widest hover:scale-[1.02] transition-transform">
-                        START SESSION
+                    <button id="play-btn" onclick="App.togglePlay()" class="w-full py-4 bg-white text-black font-bold rounded-xl shadow-lg active:scale-95 transition-transform">
+                        START SESSION (5s Delay)
                     </button>
                 </div>
 
-                <!-- Guest Controls -->
+                <!-- GUEST -->
                 <div id="guest-controls" class="hidden">
-                    <button onclick="app.guestReady()" id="ready-btn" class="w-full py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold tracking-widest shadow-[0_0_20px_rgba(168,85,247,0.4)] animate-pulse">
-                        TAP TO SYNC
+                    <button id="unlock-btn" onclick="App.unlockAudio()" class="w-full py-4 bg-purple-600 text-white font-bold rounded-xl shadow-lg shadow-purple-900/50 animate-pulse active:scale-95 transition-transform">
+                        TAP TO READY AUDIO
                     </button>
-                    <p id="waiting-text" class="hidden text-center text-xs text-slate-500 animate-pulse">SYNC LOCKED. WAITING FOR HOST...</p>
+                    <p id="waiting-msg" class="hidden text-center text-xs text-slate-400 mt-2">AUDIO READY. WAITING FOR HOST...</p>
                 </div>
 
-                <!-- Smart Hardware Compensation (The Fix) -->
-                <div class="glass p-3 rounded-xl flex items-center justify-between">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center">
-                            <i data-lucide="bluetooth" class="w-4 h-4 text-blue-400"></i>
-                        </div>
-                        <div>
-                            <p class="text-xs font-bold text-white">Bluetooth Mode</p>
-                            <p class="text-[9px] text-slate-500">Fixes wireless speaker lag</p>
-                        </div>
+                <!-- MANUAL FIX -->
+                <div class="glass p-3 rounded-2xl mt-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">Latency Fix</span>
                     </div>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" onchange="app.toggleBluetooth(this.checked)" class="sr-only peer">
-                        <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
-                    </label>
+                    <div class="flex gap-3 items-center">
+                        <button onclick="App.nudge(-50)" class="w-8 h-8 bg-slate-700 rounded flex items-center justify-center active:bg-slate-600"><i data-lucide="minus" class="w-3 h-3"></i></button>
+                        <input type="range" id="offset-slider" min="-2000" max="2000" value="0" step="10" oninput="App.setOffset(this.value)" class="flex-1">
+                        <button onclick="App.nudge(50)" class="w-8 h-8 bg-slate-700 rounded flex items-center justify-center active:bg-slate-600"><i data-lucide="plus" class="w-3 h-3"></i></button>
+                    </div>
                 </div>
-            </div>
 
+            </div>
         </div>
 
-        <!-- Loader -->
-        <div id="loader" class="hidden absolute inset-0 bg-black/95 backdrop-blur-xl z-50 flex flex-col items-center justify-center">
-            <div class="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-            <p id="loader-msg" class="text-xs font-mono text-purple-400 mt-4 tracking-widest">INITIALIZING QUANTUMLOCK...</p>
+        <!-- LOADER -->
+        <div id="loader" class="hidden absolute inset-0 bg-black/90 z-50 flex flex-col items-center justify-center">
+            <div class="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+            <p id="loader-msg" class="text-xs font-mono text-purple-400 mt-4 tracking-widest">LOADING...</p>
         </div>
 
     </div>
 
+    <!-- DEBUG CONSOLE -->
+    <div id="debug-console"></div>
+
+    <!-- SCRIPTS -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, getDoc, getDocs, query, where, orderBy, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- CONFIG ---
+        // GLOBAL ERROR HANDLER
+        window.onerror = function(msg, url, line) {
+            document.getElementById('crash-screen').classList.remove('hidden');
+            document.getElementById('crash-reason').innerText = `${msg}\nLine: ${line}`;
+            return false;
+        };
+
+        // --- HARDCODED KEYS (YOUR KEYS) ---
         const firebaseConfig = {
             apiKey: "AIzaSyDpTPRYhEztZ1SonOHGeKtn9_Luaj3cNIg",
             authDomain: "silent-disco-app.firebaseapp.com",
             projectId: "silent-disco-app",
             storageBucket: "silent-disco-app.firebasestorage.app",
             messagingSenderId: "266369591226",
-            appId: "1:266369591226:web:cee570515ae2bf29ff9f83"
+            appId: "1:266369591226:web:cee570515ae2bf29ff9f83",
+            measurementId: "G-MXS4T9LPBL"
         };
 
-        // Fallback
-        let config = firebaseConfig;
-        let appId = 'beat-sync-v6';
-        try {
-            if (typeof window.parent !== 'undefined' && window.parent.__firebase_config) config = JSON.parse(window.parent.__firebase_config);
-            if (typeof window.parent !== 'undefined' && window.parent.__app_id) appId = window.parent.__app_id;
-        } catch (e) {}
-
-        const app = initializeApp(config);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const ROOMS = `artifacts/${appId}/public/data/rooms`;
-        const TIME = `artifacts/${appId}/public/data/time`;
-
-        // --- QUANTUMLOCK ENGINE ---
-        const Engine = {
+        // --- ENGINE ---
+        const Core = {
+            app: null,
+            auth: null,
+            db: null,
             user: null,
             room: null,
-            role: 'guest',
+            role: null,
             
             // Audio
             ctx: null,
             source: null,
             buffer: null,
-            gain: null,
             
-            // Sync & Time
-            serverOffset: 0,
-            rtt: 0,
-            
-            // Playback State
+            // Sync
+            manualOffset: 0,
             isPlaying: false,
-            serverStartTime: 0,
-            
-            // Hardware Correction
-            bluetoothMode: false,
-            baseLatency: 0,     // Browser reported latency
-            manualOffset: 0,    // User fine tune (hidden mostly)
-            
-            // PID Controller for Speed
-            loopId: null,
-            lastCorrection: 0,
+            currentUrl: null,
 
-            // --- 1. BOOTSTRAP ---
+            // 1. INITIALIZE
             init: () => {
-                Engine.ui.loader(true, "QUANTUM SYNC...");
-                signInAnonymously(auth);
-                onAuthStateChanged(auth, (u) => {
-                    if(u) {
-                        Engine.user = u;
-                        Engine.syncClock().then(() => {
-                            Engine.ui.loader(false);
-                            Engine.fetchPublic();
+                Core.log("System Initializing...");
+                
+                try {
+                    Core.app = initializeApp(firebaseConfig);
+                    Core.auth = getAuth(Core.app);
+                    Core.db = getFirestore(Core.app);
+                    Core.log("Firebase Initialized");
+                } catch (e) {
+                    Core.log("Firebase Init Failed: " + e.message, true);
+                    return;
+                }
+
+                // Auth Listener
+                onAuthStateChanged(Core.auth, (u) => {
+                    if (u) {
+                        Core.user = u;
+                        Core.log(`User Logged In: ${u.uid.slice(0,5)}`);
+                        Core.updateStatus("ONLINE", "green");
+                        
+                        // Reveal UI
+                        document.getElementById('app').style.opacity = 1;
+                        document.getElementById('view-lobby').classList.remove('hidden');
+                        document.getElementById('view-lobby').classList.add('flex');
+                        
+                        // Force Icons
+                        setTimeout(() => {
+                            if(window.lucide) window.lucide.createIcons();
+                            else Core.log("Icons failed to load", true);
+                        }, 500);
+                    } else {
+                        Core.log("User signed out / null");
+                        signInAnonymously(Core.auth).catch(e => {
+                            Core.log("Anon Auth Failed: " + e.message, true);
+                            alert("Auth Failed. Check Console.");
                         });
                     }
                 });
             },
 
-            // --- 2. HIGH PRECISION CLOCK ---
-            syncClock: async () => {
-                try {
-                    const times = [];
-                    // Burst 10 pings
-                    for(let i=0; i<8; i++) {
-                        const id = Math.random().toString(36).substr(2,9);
-                        const ref = doc(db, TIME, id);
-                        const t0 = performance.now(); // High Res
-                        await setDoc(ref, { t: serverTimestamp() });
-                        const snap = await getDoc(ref);
-                        const t3 = performance.now();
-                        
-                        if(snap.exists()) {
-                            const serverT = snap.data().t.toMillis(); // Epoch
-                            // We need to map server epoch to local high-res
-                            const dateNow = Date.now();
-                            const rtt = t3 - t0;
-                            // Offset = ServerEpoch - (LocalEpoch - RTT/2)
-                            const offset = serverT - (dateNow - rtt/2);
-                            times.push({ offset, rtt });
-                            deleteDoc(ref);
-                        }
-                    }
-                    
-                    // Keep lowest RTTs
-                    times.sort((a,b) => a.rtt - b.rtt);
-                    const best = times.slice(0, 3);
-                    
-                    // Average best offsets
-                    const avgOffset = best.reduce((a,b) => a + b.offset, 0) / best.length;
-                    Engine.serverOffset = avgOffset;
-                    Engine.rtt = times[0].rtt;
-                    
-                    Engine.ui.status('online');
-                    const pingDisplay = document.getElementById('ping-display');
-                    if (pingDisplay) pingDisplay.innerText = `${Math.round(Engine.rtt)} ms`;
-                    
-                } catch(e) {
-                    console.warn(e);
-                    Engine.ui.status('offline');
-                }
+            // 2. LOGGING
+            log: (msg, isError = false) => {
+                const con = document.getElementById('debug-console');
+                const line = document.createElement('div');
+                line.innerText = `> ${msg}`;
+                if (isError) line.className = "log-err";
+                else line.className = "log-info";
+                con.appendChild(line);
+                con.scrollTop = con.scrollHeight;
+                console.log(msg);
             },
 
-            // Get Server Time (High Precision)
-            now: () => Date.now() + Engine.serverOffset,
-
-            // --- 3. AUDIO CORE ---
-            initAudio: () => {
-                if(!Engine.ctx) {
-                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                    Engine.ctx = new AudioCtx({ latencyHint: 'interactive' });
-                    Engine.baseLatency = (Engine.ctx.baseLatency || 0) * 1000;
-                    Engine.gain = Engine.ctx.createGain();
-                    Engine.gain.connect(Engine.ctx.destination);
-                }
-                if(Engine.ctx.state === 'suspended') Engine.ctx.resume();
+            updateStatus: (msg, color) => {
+                document.getElementById('status-text').innerText = msg;
+                document.getElementById('status-dot').className = `w-2 h-2 rounded-full bg-${color}-500`;
             },
 
-            loadTrack: async (url) => {
-                Engine.ui.loader(true, "BUFFERING TRACK...");
-                try {
-                    const res = await fetch(url);
-                    const buf = await res.arrayBuffer();
-                    Engine.buffer = await Engine.ctx.decodeAudioData(buf);
-                    
-                    const tt = document.getElementById('track-title');
-                    if(tt) tt.innerText = "Track Loaded";
-                    const ta = document.getElementById('track-artist');
-                    if(ta) ta.innerText = "Ready to Sync";
-                    Engine.ui.loader(false);
-                } catch(e) { 
-                    alert("Load Failed"); 
-                    Engine.ui.loader(false);
-                }
-            },
-
-            // --- 4. QUANTUM LOCK PLAYBACK (The Secret Sauce) ---
-            play: (serverStart) => {
-                if(!Engine.buffer) return;
-                Engine.serverStartTime = serverStart;
-                Engine.isPlaying = true;
+            // 3. ROOMS
+            createRoom: async () => {
+                if(!Core.user) return alert("Waiting for Auth...");
                 
-                // Calculate Start Point
-                const now = Engine.now();
+                const name = document.getElementById('username-in').value || "Host";
+                const code = Math.random().toString(36).substr(2, 6).toUpperCase();
                 
-                // --- HARDWARE COMP & LATENCY FIX ---
-                let hwLatency = Engine.bluetoothMode ? 200 : 0;
-                hwLatency += Engine.baseLatency;
-                const isMobile = /Android/.test(navigator.userAgent);
-                if(isMobile) hwLatency += 40; 
-
-                const seekPosMs = (now - serverStart) + hwLatency; 
-                const seekPos = seekPosMs / 1000;
-                
-                if (Engine.source) try { Engine.source.stop(); } catch(e){}
-                Engine.source = Engine.ctx.createBufferSource();
-                Engine.source.buffer = Engine.buffer;
-                Engine.source.connect(Engine.gain);
-                
-                // VISUALS
-                const spinner = document.getElementById('viz-spinner');
-                const glow = document.getElementById('viz-glow');
-                if(spinner) { spinner.style.opacity = 1; spinner.classList.add('animate-spin-slow'); }
-                if(glow) glow.style.opacity = 1;
-
-                if(seekPos < 0) {
-                    // Future Start
-                    const wait = Math.abs(seekPos);
-                    Engine.source.start(Engine.ctx.currentTime + wait);
-                    const ta = document.getElementById('track-artist');
-                    if(ta) ta.innerText = "Scheduled...";
-                } else {
-                    // Instant Catchup
-                    Engine.source.start(0, seekPos);
-                    const ta = document.getElementById('track-artist');
-                    if(ta) ta.innerText = "Playing";
-                }
-                
-                // Start PID Loop
-                if(Engine.loopId) clearInterval(Engine.loopId);
-                Engine.loopId = setInterval(Engine.syncLoop, 500); // Check 2x per second
-                
-                if(Engine.role === 'host') {
-                    const btn = document.getElementById('play-btn');
-                    if(btn) btn.innerText = "STOP SESSION";
-                }
-            },
-
-            stop: () => {
-                if (Engine.source) try { Engine.source.stop(); } catch(e){}
-                Engine.isPlaying = false;
-                if(Engine.loopId) clearInterval(Engine.loopId);
-                
-                // Reset Visuals
-                const spinner = document.getElementById('viz-spinner');
-                const glow = document.getElementById('viz-glow');
-                if(spinner) { spinner.style.opacity = 0; spinner.classList.remove('animate-spin-slow'); }
-                if(glow) glow.style.opacity = 0;
-                
-                const ta = document.getElementById('track-artist');
-                if(ta) ta.innerText = "Paused";
-                const sr = document.getElementById('stat-rate');
-                if(sr) sr.innerText = "1.00x";
-                
-                if(Engine.role === 'host') {
-                    const btn = document.getElementById('play-btn');
-                    if(btn) btn.innerText = "START SESSION";
-                }
-            },
-
-            // --- 5. PID CONTROLLER (Speed Nudging) ---
-            syncLoop: () => {
-                if(!Engine.isPlaying || !Engine.source) return;
-                
-                // Visual Update
-                const sd = document.getElementById('stat-drift');
-                if(sd) sd.innerText = `±${(Math.random()*2).toFixed(1)}ms`;
-            },
-
-            // --- 6. ROOM ---
-            create: async () => {
-                if(!Engine.user) {
-                    alert("Not authenticated. Retrying login...");
-                    signInAnonymously(auth);
-                    return;
-                }
-                
-                const nameEl = document.getElementById('username-input');
-                const name = nameEl ? (nameEl.value || "Host") : "Host";
-                Engine.ui.loader(true, "CREATING...");
+                Core.ui.loading(true, "CREATING SERVER...");
                 
                 try {
-                    const roomId = Math.random().toString(36).substr(2, 6).toUpperCase();
+                    const roomRef = doc(Core.db, `artifacts/syncwave-v8/public/data/rooms`, code);
                     
-                    await setDoc(doc(db, ROOMS, roomId), {
-                        host: Engine.user.uid,
+                    await setDoc(roomRef, {
+                        host: Core.user.uid,
                         hostName: name,
-                        isPublic: true,
-                        status: 'idle',
                         track: '',
+                        status: 'idle',
                         startTime: 0,
                         updatedAt: serverTimestamp()
                     });
                     
-                    await setDoc(doc(db, ROOMS, roomId, 'users', Engine.user.uid), { name });
-                    Engine.role = 'host';
-                    Engine.enter(roomId);
-                } catch (e) {
-                    alert("Error creating room: " + e.message);
-                    Engine.ui.loader(false);
-                }
-            },
-
-            join: async (code) => {
-                if(!Engine.user) {
-                    alert("Not authenticated. Retrying login...");
-                    signInAnonymously(auth);
-                    return;
-                }
-                
-                const codeInp = document.getElementById('room-code-input');
-                if(!code && codeInp) code = codeInp.value.toUpperCase();
-                if(!code || code.length < 3) return;
-                
-                Engine.ui.loader(true, "JOINING...");
-                try {
-                    const nameEl = document.getElementById('username-input');
-                    const name = nameEl ? (nameEl.value || "Guest") : "Guest";
-                    await setDoc(doc(db, ROOMS, code, 'users', Engine.user.uid), { name });
-                    Engine.role = 'guest';
-                    Engine.enter(code);
-                } catch (e) {
-                    alert("Error joining: " + e.message);
-                    Engine.ui.loader(false);
-                }
-            },
-
-            enter: (id) => {
-                Engine.room = id;
-                const landing = document.getElementById('view-landing');
-                const player = document.getElementById('view-player');
-                const roomCode = document.getElementById('room-code-display');
-                
-                if(landing) landing.classList.add('hidden');
-                if(player) {
-                    player.classList.remove('hidden');
-                    player.classList.add('flex');
-                }
-                if(roomCode) roomCode.innerText = id;
-                
-                if(Engine.role === 'host') {
-                    const hostCtrls = document.getElementById('host-controls');
-                    const guestCtrls = document.getElementById('guest-controls');
-                    if(hostCtrls) {
-                        hostCtrls.classList.remove('hidden');
-                        hostCtrls.classList.add('flex');
-                    }
-                    if(guestCtrls) guestCtrls.classList.add('hidden');
+                    // Add Self to users
+                    await setDoc(doc(Core.db, `artifacts/syncwave-v8/public/data/rooms`, code, 'users', Core.user.uid), { name });
                     
-                    Engine.initAudio();
+                    Core.log("Room Created: " + code);
+                    Core.role = 'host';
+                    Core.enterRoom(code);
+                    
+                } catch (e) {
+                    Core.log("Create Error: " + e.message, true);
+                    alert("Error creating room: " + e.message);
+                    Core.ui.loading(false);
+                }
+            },
+
+            joinRoom: async () => {
+                if(!Core.user) return alert("Waiting for Auth...");
+                
+                const code = document.getElementById('code-in').value.toUpperCase();
+                const name = document.getElementById('username-in').value || "Guest";
+                
+                if (code.length < 3) return alert("Invalid Code");
+                
+                Core.ui.loading(true, "CONNECTING...");
+                
+                try {
+                    const roomPath = `artifacts/syncwave-v8/public/data/rooms`;
+                    // Just write user entry to join
+                    await setDoc(doc(Core.db, roomPath, code, 'users', Core.user.uid), { name });
+                    
+                    Core.log("Joined Room: " + code);
+                    Core.role = 'guest';
+                    Core.enterRoom(code);
+                    
+                } catch (e) {
+                    Core.log("Join Error: " + e.message, true);
+                    alert("Error joining: " + e.message);
+                    Core.ui.loading(false);
+                }
+            },
+
+            enterRoom: (code) => {
+                Core.room = code;
+                document.getElementById('view-lobby').classList.add('hidden');
+                document.getElementById('view-player').classList.remove('hidden');
+                document.getElementById('view-player').classList.add('flex');
+                document.getElementById('room-display').innerText = code;
+                
+                if (Core.role === 'host') {
+                    const hc = document.getElementById('host-controls');
+                    hc.classList.remove('hidden');
+                    hc.classList.add('flex');
+                    Core.initAudio();
                 } else {
-                    const hostCtrls = document.getElementById('host-controls');
-                    const guestCtrls = document.getElementById('guest-controls');
-                    if(hostCtrls) hostCtrls.classList.add('hidden');
-                    if(guestCtrls) guestCtrls.classList.remove('hidden');
+                    document.getElementById('guest-controls').classList.remove('hidden');
                 }
                 
-                Engine.subscribe();
-                Engine.ui.loader(false);
+                Core.subscribe();
+                Core.ui.loading(false);
+            },
+
+            // 4. AUDIO
+            initAudio: () => {
+                if (!Core.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    Core.ctx = new AudioCtx();
+                    Core.log("Audio Context Created");
+                }
+                if (Core.ctx.state === 'suspended') Core.ctx.resume();
+            },
+
+            loadTrack: async (url) => {
+                document.getElementById('track-status').innerText = "DOWNLOADING...";
+                Core.log("Downloading: " + url.substring(0, 20) + "...");
+                
+                try {
+                    const res = await fetch(url);
+                    const buf = await res.arrayBuffer();
+                    Core.buffer = await Core.ctx.decodeAudioData(buf);
+                    
+                    document.getElementById('track-name').innerText = "Track Loaded";
+                    document.getElementById('track-status').innerText = "READY";
+                    Core.log("Track Decoded Successfully");
+                    
+                    if (Core.role === 'guest') {
+                        document.getElementById('waiting-msg').innerText = "READY. WAITING FOR HOST...";
+                    }
+                } catch (e) {
+                    Core.log("Load Error: " + e.message, true);
+                    alert("Failed to load track");
+                }
+            },
+
+            // 5. PLAYBACK
+            play: (serverStartTime) => {
+                if (!Core.buffer) return;
+                
+                const now = Date.now();
+                const delayMs = (serverStartTime - now) + Core.manualOffset;
+                
+                if (Core.source) try { Core.source.stop(); } catch(e){}
+                Core.source = Core.ctx.createBufferSource();
+                Core.source.buffer = Core.buffer;
+                Core.source.connect(Core.ctx.destination);
+                
+                if (delayMs > 0) {
+                    // Future Start
+                    Core.source.start(Core.ctx.currentTime + (delayMs/1000));
+                    document.getElementById('track-status').innerText = `STARTING IN ${(delayMs/1000).toFixed(1)}s`;
+                    Core.log("Scheduling Play in " + delayMs + "ms");
+                } else {
+                    // Past Start (Seek)
+                    const seekPos = Math.abs(delayMs) / 1000;
+                    Core.source.start(0, seekPos);
+                    document.getElementById('track-status').innerText = "PLAYING";
+                    Core.log("Playing immediately (catchup " + seekPos + "s)");
+                }
+                
+                Core.isPlaying = true;
+                document.getElementById('viz-pulse').style.opacity = 1;
+                
+                if (Core.role === 'host') document.getElementById('play-btn').innerText = "STOP SESSION";
+            },
+
+            stop: () => {
+                if (Core.source) try { Core.source.stop(); } catch(e){}
+                Core.isPlaying = false;
+                document.getElementById('viz-pulse').style.opacity = 0;
+                document.getElementById('track-status').innerText = "PAUSED";
+                
+                if (Core.role === 'host') document.getElementById('play-btn').innerText = "START SESSION (5s Delay)";
+            },
+
+            // 6. LOGIC
+            togglePlay: async () => {
+                if (Core.isPlaying) {
+                    await setDoc(doc(Core.db, `artifacts/syncwave-v8/public/data/rooms`, Core.room), { status: 'idle' }, { merge: true });
+                } else {
+                    const future = Date.now() + 5000; 
+                    await setDoc(doc(Core.db, `artifacts/syncwave-v8/public/data/rooms`, Core.room), { 
+                        status: 'playing', 
+                        startTime: future 
+                    }, { merge: true });
+                }
             },
 
             subscribe: () => {
-                onSnapshot(doc(db, ROOMS, Engine.room), (snap) => {
-                    if(!snap.exists()) return;
+                Core.log("Subscribing to Room Updates...");
+                onSnapshot(doc(Core.db, `artifacts/syncwave-v8/public/data/rooms`, Core.room), (snap) => {
+                    if (!snap.exists()) return;
                     const d = snap.data();
                     
-                    const hn = document.getElementById('host-name'); // Missing ID in HTML?
-                    // Note: 'host-name' ID not in HTML, maybe 'track-artist'? No.
-                    // Ah, HTML doesn't have 'host-name' element in player view.
-                    // It has 'track-artist' and 'track-title'.
-                    
-                    if(d.track && d.track !== Engine.currentUrl) {
-                        Engine.currentUrl = d.track;
-                        Engine.loadTrack(d.track);
+                    if (d.track && d.track !== Core.currentUrl) {
+                        Core.currentUrl = d.track;
+                        Core.loadTrack(d.track);
                     }
-                    if(d.status === 'playing' && !Engine.isPlaying) Engine.play(d.startTime);
-                    else if(d.status === 'idle' && Engine.isPlaying) Engine.stop();
+                    
+                    if (d.status === 'playing' && !Core.isPlaying) {
+                        Core.play(d.startTime);
+                    } else if (d.status === 'idle' && Core.isPlaying) {
+                        Core.stop();
+                    }
                 });
-                
-                onSnapshot(collection(db, ROOMS, Engine.room, 'users'), (snap) => {
-                    const pc = document.getElementById('participant-count');
-                    if(pc) pc.innerText = `${snap.size} Connected`;
-                });
-            },
-            
-            fetchPublic: async () => {
-                const list = document.getElementById('public-list');
-                if(!list) return;
-                try {
-                    const q = query(collection(db, ROOMS), where("isPublic", "==", true), orderBy("updatedAt", "desc"));
-                    const snap = await getDocs(q);
-                    list.innerHTML = "";
-                    snap.forEach(d => {
-                        const data = d.data();
-                        const el = document.createElement('div');
-                        el.className = "flex justify-between items-center p-3 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer transition-colors";
-                        el.onclick = () => window.app.joinRoom(d.id);
-                        el.innerHTML = `
-                            <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-xs font-bold">${data.hostName[0]}</div>
-                                <div>
-                                    <div class="text-xs font-bold text-white">${data.hostName}'s Jam</div>
-                                    <div class="text-[9px] text-slate-400 font-mono">${data.status === 'playing' ? 'LIVE' : 'LOBBY'}</div>
-                                </div>
-                            </div>
-                            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500"></i>
-                        `;
-                        list.appendChild(el);
-                    });
-                    lucide.createIcons();
-                } catch(e) {}
             },
 
-            // --- UI HELPERS ---
+            // UI
             ui: {
-                loader: (show, msg) => {
-                    const el = document.getElementById('loader');
-                    if(el) {
-                        el.classList.toggle('hidden', !show);
-                        const msgEl = document.getElementById('loader-msg');
-                        if (msg && msgEl) msgEl.innerText = msg;
-                    }
-                },
-                status: (state) => {
-                    const dot = document.getElementById('sync-dot');
-                    const txt = document.getElementById('sync-status');
-                    if(dot && txt) {
-                        if(state === 'online') {
-                            dot.className = "w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]";
-                            txt.innerText = "QUANTUM LOCK";
-                            txt.className = "text-[10px] font-mono text-green-500 font-bold uppercase tracking-widest";
-                        } else {
-                            dot.className = "w-2 h-2 rounded-full bg-red-500";
-                            txt.innerText = "OFFLINE";
-                            txt.className = "text-[10px] font-mono text-red-500 font-bold uppercase tracking-widest";
-                        }
+                loading: (show, msg) => {
+                    const l = document.getElementById('loader');
+                    if (show) {
+                        l.classList.remove('hidden');
+                        document.getElementById('loader-msg').innerText = msg;
+                    } else {
+                        l.classList.add('hidden');
                     }
                 }
             }
         };
 
-        // --- EXPORTED ---
-        window.app = {
-            createRoom: Engine.create,
-            joinRoom: (c) => Engine.join(c),
-            showJoin: () => {
-                const jd = document.getElementById('join-drawer');
-                if(jd) jd.classList.remove('hidden');
+        // EXPORT
+        window.App = {
+            createRoom: Core.createRoom,
+            joinRoom: Core.joinRoom,
+            showJoin: () => document.getElementById('join-drawer').classList.remove('hidden'),
+            toggleLog: () => {
+                const l = document.getElementById('debug-console');
+                l.style.display = l.style.display === 'block' ? 'none' : 'block';
             },
-            toggleBluetooth: (val) => {
-                Engine.bluetoothMode = val;
-                // If playing, restart to apply latency fix
-                if(Engine.isPlaying) Engine.play(Engine.serverStartTime);
-            },
+            
             selectTrack: () => {
-                const sel = document.getElementById('track-select');
-                const url = sel ? sel.value : "";
-                if(url) {
-                    Engine.ui.loader(true, "BROADCASTING...");
-                    setDoc(doc(db, ROOMS, Engine.room), { track: url, status: 'idle' }, { merge: true })
-                        .then(() => Engine.loadTrack(url));
+                const val = document.getElementById('track-select').value;
+                if(val) {
+                    setDoc(doc(Core.db, `artifacts/syncwave-v8/public/data/rooms`, Core.room), { track: val, status: 'idle' }, { merge: true })
+                        .then(() => Core.loadTrack(val));
                 }
             },
-            togglePlay: async () => {
-                if(Engine.isPlaying) {
-                    await setDoc(doc(db, ROOMS, Engine.room), { status: 'idle' }, { merge: true });
-                } else {
-                    const future = Engine.now() + 5000;
-                    await setDoc(doc(db, ROOMS, Engine.room), { status: 'playing', startTime: future }, { merge: true });
-                }
-            },
-            guestReady: () => {
-                Engine.initAudio();
-                const b = Engine.ctx.createBuffer(1, 1, 22050);
-                const s = Engine.ctx.createBufferSource();
-                s.buffer = b; s.connect(Engine.ctx.destination); s.start(0);
+            
+            togglePlay: Core.togglePlay,
+            
+            unlockAudio: () => {
+                Core.initAudio();
+                const b = Core.ctx.createBuffer(1, 1, 22050);
+                const s = Core.ctx.createBufferSource();
+                s.buffer = b; s.connect(Core.ctx.destination); s.start(0);
                 
-                const rb = document.getElementById('ready-btn');
-                const wt = document.getElementById('waiting-text');
-                if(rb) rb.classList.add('hidden');
-                if(wt) wt.classList.remove('hidden');
-                
-                // If track is ready, play catch up
-                if(Engine.buffer && Engine.currentUrl) {
-                    if(wt) wt.innerText = "READY. WAITING FOR DROP...";
-                }
+                document.getElementById('unlock-btn').classList.add('hidden');
+                document.getElementById('waiting-msg').classList.remove('hidden');
+                if (Core.buffer) document.getElementById('waiting-msg').innerText = "READY. WAITING FOR HOST...";
             },
-            unlockAudio: () => window.app.guestReady(),
+            
+            setOffset: (val) => {
+                Core.manualOffset = parseInt(val);
+                document.getElementById('offset-display').innerText = `${val}ms`;
+            },
+            nudge: (val) => {
+                const sl = document.getElementById('offset-slider');
+                sl.value = parseInt(sl.value) + val;
+                window.App.setOffset(sl.value);
+            },
             copyCode: () => {
-                navigator.clipboard.writeText(Engine.room);
+                navigator.clipboard.writeText(Core.room);
                 alert("Copied!");
             }
         };
 
-        Engine.init();
+        // Start
+        Core.init();
+
     </script>
 </body>
 </html>
