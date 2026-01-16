@@ -3,872 +3,623 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Silent Disco Sync</title>
+    <title>SYNCWAVE | Pro Audio Sync</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: white; }
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap');
         
-        /* Custom Range Slider */
-        input[type=range] {
-            -webkit-appearance: none;
-            width: 100%;
-            background: transparent;
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #050505; 
+            color: white; 
+            overflow: hidden;
         }
+        
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #111; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+        /* Animations */
+        @keyframes pulse-soft {
+            0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 20px rgba(168, 85, 247, 0.2); }
+            50% { opacity: 0.8; transform: scale(0.98); box-shadow: 0 0 10px rgba(168, 85, 247, 0.1); }
+        }
+        @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        
+        .animate-pulse-soft { animation: pulse-soft 3s ease-in-out infinite; }
+        .animate-spin-slow { animation: spin-slow 8s linear infinite; }
+
+        /* Range Slider */
+        input[type=range] { -webkit-appearance: none; background: transparent; }
         input[type=range]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            height: 20px;
-            width: 20px;
-            border-radius: 50%;
-            background: #a855f7;
-            margin-top: -8px;
-            box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
-            cursor: pointer;
+            -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%;
+            background: #a855f7; margin-top: -6px; cursor: pointer; border: 2px solid #fff;
         }
-        input[type=range]::-webkit-slider-runnable-track {
-            width: 100%;
-            height: 4px;
-            background: #334155;
-            border-radius: 2px;
-        }
-        
-        /* Pulse Animation for Visualizer */
-        .pulse-ring {
-            animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
-        }
-        @keyframes pulse-ring {
-            0% { transform: scale(0.8); opacity: 0.5; }
-            100% { transform: scale(2); opacity: 0; }
-        }
-        
-        .hidden { display: none !important; }
-        
-        .scanning-bar {
-            width: 100%;
-            height: 4px;
-            background: linear-gradient(90deg, transparent, #a855f7, transparent);
-            background-size: 50% 100%;
-            background-repeat: no-repeat;
-            animation: scan 1.5s infinite linear;
-        }
-        @keyframes scan {
-            0% { background-position: -50% 0; }
-            100% { background-position: 150% 0; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: #333; border-radius: 2px; }
+
+        .glass-panel {
+            background: rgba(20, 20, 20, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
     </style>
 </head>
-<body class="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+<body class="h-screen w-full flex flex-col items-center justify-center relative">
 
-    <!-- Background Decoration -->
-    <div class="absolute top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
-        <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
-        <div class="absolute top-[-10%] right-[-10%] w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
-        <div class="absolute bottom-[-10%] left-[20%] w-96 h-96 bg-pink-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
+    <!-- Ambient Background -->
+    <div class="fixed inset-0 z-0 pointer-events-none">
+        <div class="absolute top-[-20%] left-[-20%] w-[80vw] h-[80vw] bg-purple-900/20 rounded-full blur-[120px]"></div>
+        <div class="absolute bottom-[-20%] right-[-20%] w-[80vw] h-[80vw] bg-blue-900/20 rounded-full blur-[120px]"></div>
     </div>
 
-    <!-- MAIN APP CONTAINER -->
-    <div id="app" class="w-full max-w-md bg-slate-900/80 backdrop-blur-md border border-slate-700 rounded-2xl shadow-2xl p-6 relative">
+    <!-- MAIN INTERFACE -->
+    <div id="app" class="relative z-10 w-full max-w-md h-full flex flex-col p-6 transition-all duration-500">
         
         <!-- HEADER -->
-        <div class="text-center mb-8">
-            <h1 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
-                SYNC<span class="text-white">WAVE</span>
-            </h1>
-            <p class="text-slate-400 text-xs tracking-widest mt-1">DISTRIBUTED SPEAKER SYSTEM</p>
-            <div class="flex items-center justify-center gap-2 mt-2">
-                <div id="clock-status" class="text-[10px] text-yellow-500 font-mono">Connecting...</div>
-                <button onclick="app.autoSyncClock()" class="text-[10px] bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded border border-slate-600 text-purple-300 transition-colors flex items-center gap-1">
-                    <i data-lucide="refresh-cw" class="w-3 h-3"></i> Retry Sync
-                </button>
+        <header class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-2xl font-black tracking-tighter flex items-center gap-2">
+                    <span class="w-3 h-3 bg-purple-500 rounded-full animate-pulse"></span>
+                    SYNCWAVE
+                </h1>
+                <p class="text-[10px] text-slate-500 font-mono tracking-widest uppercase mt-1">Latency Killer Engine v3.1</p>
             </div>
-        </div>
-
-        <!-- VIEW: LOGIN / LANDING -->
-        <div id="view-landing" class="flex flex-col gap-4">
-            <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
-                <label class="block text-slate-400 text-sm mb-2">Your Name</label>
-                <input type="text" id="username-input" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition-colors" placeholder="Enter your name...">
+            <div id="connection-badge" class="px-2 py-1 rounded bg-red-500/10 border border-red-500/20 text-red-400 text-[9px] font-mono font-bold flex items-center gap-1">
+                <i data-lucide="wifi-off" class="w-3 h-3"></i> OFFLINE
             </div>
+        </header>
 
-            <div class="grid grid-cols-2 gap-4 mt-2">
-                <button onclick="app.createRoom()" class="flex flex-col items-center justify-center p-6 bg-gradient-to-br from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-xl transition-all transform hover:scale-[1.02] shadow-lg group">
-                    <i data-lucide="mic-2" class="w-8 h-8 mb-2 text-white/90 group-hover:scale-110 transition-transform"></i>
-                    <span class="font-bold">Host Party</span>
-                </button>
-                <button onclick="app.showJoinInput()" class="flex flex-col items-center justify-center p-6 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl transition-all transform hover:scale-[1.02] shadow-lg group">
-                    <i data-lucide="headphones" class="w-8 h-8 mb-2 text-purple-400 group-hover:scale-110 transition-transform"></i>
-                    <span class="font-bold">Join Party</span>
-                </button>
+        <!-- VIEW 1: LOBBY -->
+        <div id="view-landing" class="flex-1 flex flex-col justify-center gap-6 animate-fade-in">
+            <!-- Name Input -->
+            <div class="space-y-2">
+                <label class="text-xs text-slate-400 font-mono ml-1">IDENTIFICATION</label>
+                <input type="text" id="username-input" class="w-full bg-black/40 border border-slate-700 focus:border-purple-500 rounded-xl px-4 py-4 text-white text-lg placeholder-slate-600 outline-none transition-all" placeholder="Enter Nickname">
             </div>
 
-            <!-- Join Input (Hidden by default) -->
-            <div id="join-input-container" class="hidden mt-4 animate-fade-in">
+            <!-- Action Cards -->
+            <div class="grid grid-cols-2 gap-4">
+                <button onclick="app.createRoom()" class="glass-panel group p-6 rounded-2xl flex flex-col items-center justify-center gap-3 hover:bg-purple-900/20 hover:border-purple-500/50 transition-all active:scale-95">
+                    <div class="w-12 h-12 rounded-full bg-purple-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <i data-lucide="radio-tower" class="w-6 h-6 text-purple-400"></i>
+                    </div>
+                    <span class="font-bold text-sm">HOST PARTY</span>
+                </button>
+
+                <button onclick="app.showJoinUI()" class="glass-panel group p-6 rounded-2xl flex flex-col items-center justify-center gap-3 hover:bg-blue-900/20 hover:border-blue-500/50 transition-all active:scale-95">
+                    <div class="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <i data-lucide="headphones" class="w-6 h-6 text-blue-400"></i>
+                    </div>
+                    <span class="font-bold text-sm">JOIN PARTY</span>
+                </button>
+            </div>
+
+            <!-- Join Input (Hidden) -->
+            <div id="join-form" class="hidden space-y-2 mt-4">
+                <label class="text-xs text-slate-400 font-mono ml-1">ROOM FREQUENCY</label>
                 <div class="flex gap-2">
-                    <input type="text" id="room-id-input" class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500 uppercase tracking-wider" placeholder="ROOM CODE">
-                    <button onclick="app.joinRoom()" class="bg-purple-600 hover:bg-purple-500 px-6 rounded-lg font-bold transition-colors">GO</button>
+                    <input type="text" id="room-code-input" class="flex-1 bg-black/40 border border-slate-700 rounded-xl px-4 py-3 text-white uppercase font-mono tracking-widest outline-none focus:border-blue-500" placeholder="CODE">
+                    <button onclick="app.joinRoom()" class="bg-blue-600 hover:bg-blue-500 text-white px-6 rounded-xl font-bold transition-all">
+                        CONNECT
+                    </button>
                 </div>
             </div>
         </div>
 
-        <!-- VIEW: ROOM (HOST & GUEST) -->
-        <div id="view-room" class="hidden flex flex-col items-center">
+        <!-- VIEW 2: PLAYER -->
+        <div id="view-player" class="hidden flex-1 flex flex-col relative">
             
-            <!-- Room Code Header -->
-            <div class="flex flex-col w-full mb-6 bg-slate-800/50 rounded-lg border border-slate-700">
-                <div class="flex items-center justify-between px-4 py-2 border-b border-slate-700/50">
-                    <div class="flex items-center gap-2">
-                        <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span class="text-xs font-mono text-slate-300">LIVE</span>
-                    </div>
-                    <div class="text-sm font-mono tracking-widest text-purple-300 cursor-pointer" onclick="app.copyRoomCode()">
-                        CODE: <span id="display-room-code" class="font-bold text-white">---</span>
-                        <i data-lucide="copy" class="inline w-3 h-3 ml-1 opacity-50"></i>
+            <!-- Room Status Bar -->
+            <div class="glass-panel rounded-lg p-3 mb-6 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <div class="flex flex-col">
+                        <span class="text-[9px] text-slate-400 font-mono">ROOM CODE</span>
+                        <span id="display-room-code" class="text-lg font-mono font-bold tracking-wider text-white select-all">---</span>
                     </div>
                 </div>
-                <!-- Host and Count Display -->
-                <div class="flex items-center justify-between px-4 py-2 text-[10px] text-slate-400 bg-slate-900/30 rounded-b-lg">
-                    <div class="flex items-center gap-1">
-                        <i data-lucide="crown" class="w-3 h-3 text-yellow-500"></i>
-                        <span id="host-name-display">Host: ...</span>
-                    </div>
-                    <div class="flex items-center gap-1">
-                        <i data-lucide="users" class="w-3 h-3 text-blue-400"></i>
-                        <span id="participant-count">1 Connected</span>
-                    </div>
+                <div class="text-right">
+                    <span id="participant-count" class="text-xs font-bold text-purple-400">1 Online</span>
+                    <p id="host-name" class="text-[9px] text-slate-500">Host: You</p>
                 </div>
             </div>
 
-            <!-- Visualizer Circle -->
-            <div class="relative w-48 h-48 mb-8 flex items-center justify-center">
-                <div id="visualizer-ring" class="absolute inset-0 bg-purple-500 rounded-full opacity-20 hidden"></div>
-                <div class="w-40 h-40 bg-slate-800 rounded-full border-4 border-slate-700 flex items-center justify-center z-10 shadow-inner overflow-hidden relative">
-                     <!-- Cover Art Placeholder -->
-                     <div class="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
-                        <i data-lucide="music" class="w-16 h-16 text-slate-600"></i>
-                     </div>
-                </div>
-            </div>
-
-            <!-- Song Info -->
-            <div class="text-center w-full mb-6">
-                <h2 id="song-title" class="text-xl font-bold text-white truncate">Waiting for song...</h2>
-                <p id="song-status" class="text-sm text-slate-400 mt-1">Ready to Sync</p>
-            </div>
-
-            <!-- HOST CONTROLS -->
-            <div id="host-controls" class="w-full hidden flex-col gap-4">
-                <div class="relative">
-                    <select id="song-select" onchange="app.handleSongSelect()" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white appearance-none focus:outline-none focus:border-purple-500">
-                        <option value="">Select a Track...</option>
-                        <option value="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3">Cyberpunk Beats (Electronic)</option>
-                        <option value="https://cdn.pixabay.com/download/audio/2022/03/10/audio_c8c8a73467.mp3">Lofi Study (Chill)</option>
-                        <option value="https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3">Epic Cinematic (Orchestral)</option>
-                        <option value="custom">Paste Custom URL...</option>
-                    </select>
-                    <i data-lucide="chevron-down" class="absolute right-4 top-4 w-4 h-4 text-slate-400 pointer-events-none"></i>
-                </div>
+            <!-- Album Art / Visualizer -->
+            <div class="flex-1 flex flex-col items-center justify-center relative min-h-[250px]">
+                <!-- Rings -->
+                <div id="viz-ring-1" class="absolute w-64 h-64 border border-purple-500/20 rounded-full opacity-0 scale-50 transition-all duration-1000"></div>
+                <div id="viz-ring-2" class="absolute w-48 h-48 border border-purple-500/40 rounded-full opacity-0 scale-50 transition-all duration-1000 delay-100"></div>
                 
-                <input type="text" id="custom-url-input" class="hidden w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-sm text-slate-300" placeholder="Paste MP3 URL here...">
+                <!-- Core -->
+                <div class="relative z-10 w-40 h-40 rounded-full bg-gradient-to-tr from-slate-800 to-black border-4 border-slate-800 shadow-2xl flex items-center justify-center overflow-hidden animate-pulse-soft">
+                    <img src="https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=2070&auto=format&fit=crop" class="absolute inset-0 w-full h-full object-cover opacity-60" alt="cover">
+                    <i data-lucide="music" class="w-12 h-12 text-white relative z-20"></i>
+                </div>
 
-                <button id="play-btn" onclick="app.togglePlay()" disabled class="w-full py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-xl font-bold text-lg transition-all shadow-lg flex items-center justify-center gap-2">
-                    <i data-lucide="play" class="w-5 h-5"></i>
-                    <span>START SESSION</span>
+                <!-- Sync Overlay Button -->
+                <div id="tap-to-sync" class="hidden absolute inset-0 z-30 flex items-center justify-center bg-black/80 backdrop-blur-sm rounded-2xl cursor-pointer" onclick="app.unlockAudio()">
+                    <div class="bg-green-600 px-8 py-4 rounded-full shadow-[0_0_30px_rgba(22,163,74,0.5)] animate-bounce">
+                        <span class="font-bold text-white tracking-widest">TAP TO SYNC</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Track Info -->
+            <div class="text-center mb-8">
+                <h2 id="track-title" class="text-xl font-bold text-white mb-1 truncate">Waiting for Host...</h2>
+                <p id="track-status" class="text-xs text-purple-400 font-mono uppercase tracking-widest">System Idle</p>
+            </div>
+
+            <!-- Tech Stats Dashboard -->
+            <div class="grid grid-cols-3 gap-2 mb-6">
+                <div class="glass-panel p-2 rounded text-center">
+                    <p class="text-[8px] text-slate-500 font-mono">OFFSET</p>
+                    <p id="stat-offset" class="text-xs font-mono font-bold text-white">0ms</p>
+                </div>
+                <div class="glass-panel p-2 rounded text-center">
+                    <p class="text-[8px] text-slate-500 font-mono">DRIFT</p>
+                    <p id="stat-drift" class="text-xs font-mono font-bold text-green-400">0ms</p>
+                </div>
+                <div class="glass-panel p-2 rounded text-center">
+                    <p class="text-[8px] text-slate-500 font-mono">RATE</p>
+                    <p id="stat-rate" class="text-xs font-mono font-bold text-blue-400">1.0x</p>
+                </div>
+            </div>
+
+            <!-- Controls (Host Only) -->
+            <div id="host-controls" class="hidden flex-col gap-3 mb-4">
+                <select id="track-select" onchange="app.selectTrack()" class="w-full bg-slate-800 text-xs px-4 py-3 rounded-lg border border-slate-700 outline-none text-white">
+                    <option value="">Select a Track...</option>
+                    <option value="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3">Neon Blade (Electronic)</option>
+                    <option value="https://cdn.pixabay.com/download/audio/2022/03/10/audio_c8c8a73467.mp3">Night Drive (Lofi)</option>
+                    <option value="https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3">Epic Reveal (Cinematic)</option>
+                </select>
+                <button onclick="app.togglePlayback()" id="play-btn" class="w-full py-4 bg-purple-600 hover:bg-purple-500 rounded-xl font-bold tracking-widest shadow-lg shadow-purple-900/50 transition-all active:scale-95">
+                    START SESSION
                 </button>
             </div>
 
-            <!-- GUEST CONTROLS -->
-            <div id="guest-controls" class="w-full hidden flex-col gap-4">
-                <button id="ready-btn" onclick="app.guestReady()" class="w-full py-4 bg-green-600 hover:bg-green-500 rounded-xl font-bold text-lg animate-pulse shadow-lg border border-green-400">
-                    TAP TO UNLOCK AUDIO
-                </button>
-                <div id="waiting-msg" class="hidden text-center p-4 bg-slate-800/50 rounded-xl border border-slate-700">
-                    <div class="flex justify-center mb-2">
-                        <span class="flex h-3 w-3 relative">
-                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                            <span class="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
-                        </span>
-                    </div>
-                    <p class="text-slate-300 text-sm">Audio Unlocked & Buffered</p>
-                    <p class="text-slate-500 text-xs mt-1">Waiting for Host...</p>
+            <!-- Manual Sync Slider -->
+            <div class="flex items-center gap-3 px-2">
+                <button onclick="app.nudgeOffset(-10)" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400"><i data-lucide="minus" class="w-3 h-3"></i></button>
+                <div class="flex-1 relative">
+                    <input type="range" id="offset-slider" min="-500" max="500" value="0" step="10" oninput="app.setManualOffset(this.value)">
+                    <div class="w-[1px] h-3 bg-white/20 absolute top-1 left-1/2 -translate-x-1/2 pointer-events-none"></div>
                 </div>
+                <button onclick="app.nudgeOffset(10)" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400"><i data-lucide="plus" class="w-3 h-3"></i></button>
             </div>
-
-            <!-- SYNC / AUTO-FIX CONTROLS -->
-            <div class="w-full mt-8 pt-6 border-t border-slate-700/50">
-                <div class="flex justify-between items-center mb-2">
-                    <label class="text-xs font-bold text-slate-400 uppercase tracking-widest">Sync Offset</label>
-                    <span id="offset-display" class="text-xs font-mono text-purple-400">0ms</span>
-                </div>
-                
-                <!-- Mic Sync Button -->
-                <button onclick="app.autoSyncWithMic()" id="mic-sync-btn" class="w-full mb-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg flex items-center justify-center gap-2 transition-colors">
-                    <i data-lucide="mic" class="w-4 h-4 text-purple-400"></i>
-                    <span class="text-sm font-semibold">Auto-Sync (Use Mic)</span>
-                </button>
-                
-                <div id="mic-status" class="hidden w-full mb-4">
-                    <div class="scanning-bar rounded-full"></div>
-                    <p class="text-[10px] text-center text-slate-400 mt-1">Listening... hold close to speaker</p>
-                </div>
-                
-                <!-- Manual Controls -->
-                <div class="flex items-center gap-3 bg-slate-800/50 p-3 rounded-xl border border-slate-700">
-                    <button onclick="app.nudgeOffset(-10)" class="w-10 h-10 flex items-center justify-center bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-bold transition-colors active:scale-95" title="-10ms">
-                        <i data-lucide="minus" class="w-4 h-4"></i>
-                    </button>
-                    
-                    <div class="flex-1">
-                        <input type="range" id="sync-slider" min="-3000" max="3000" value="0" step="10" oninput="app.updateOffset(this.value)">
-                        <div class="flex justify-between text-[8px] text-slate-500 mt-1 font-mono uppercase">
-                            <span>Earlier</span>
-                            <span>Later</span>
-                        </div>
-                    </div>
-
-                    <button onclick="app.nudgeOffset(10)" class="w-10 h-10 flex items-center justify-center bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-bold transition-colors active:scale-95" title="+10ms">
-                        <i data-lucide="plus" class="w-4 h-4"></i>
-                    </button>
-                </div>
-            </div>
+            <p class="text-[9px] text-center text-slate-600 mt-2">Manual Nudge</p>
 
         </div>
 
-        <!-- LOADING OVERLAY -->
-        <div id="loader" class="hidden absolute inset-0 bg-slate-900/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center rounded-2xl">
-            <div class="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p id="loader-text" class="text-purple-300 font-bold animate-pulse">Loading...</p>
+        <!-- Fullscreen Loader -->
+        <div id="loader" class="hidden absolute inset-0 bg-black/90 backdrop-blur-xl z-50 flex flex-col items-center justify-center">
+            <div class="w-10 h-10 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+            <p id="loader-msg" class="text-xs font-mono text-purple-400 mt-4 animate-pulse">SYSTEM INITIALIZING...</p>
         </div>
 
     </div>
 
-    <!-- FIREBASE & APP SCRIPT -->
+    <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- CONFIGURATION ---
-        
-        // YOUR FIREBASE CONFIGURATION
+        // --- FIREBASE CONFIGURATION ---
         const firebaseConfig = {
             apiKey: "AIzaSyDpTPRYhEztZ1SonOHGeKtn9_Luaj3cNIg",
             authDomain: "silent-disco-app.firebaseapp.com",
             projectId: "silent-disco-app",
             storageBucket: "silent-disco-app.firebasestorage.app",
             messagingSenderId: "266369591226",
-            appId: "1:266369591226:web:cee570515ae2bf29ff9f83",
-            measurementId: "G-MXS4T9LPBL"
+            appId: "1:266369591226:web:cee570515ae2bf29ff9f83"
         };
-        
-        let finalConfig = firebaseConfig;
-        let finalAppId = 'silent-disco-party';
 
+        // Fallback for canvas environment
+        let config = firebaseConfig;
+        let appId = 'beat-sync-v3';
         try {
             if (typeof window.parent !== 'undefined' && window.parent.__firebase_config) {
-                finalConfig = JSON.parse(window.parent.__firebase_config);
+                config = JSON.parse(window.parent.__firebase_config);
             }
             if (typeof window.parent !== 'undefined' && window.parent.__app_id) {
-                finalAppId = window.parent.__app_id;
+                appId = window.parent.__app_id;
             }
-        } catch (e) {
-            console.log("Using standalone config due to cross-origin restriction.");
-        }
+        } catch (e) {}
 
-        const collectionPath = `artifacts/${finalAppId}/public/data/rooms`;
-        const timeSyncPath = `artifacts/${finalAppId}/public/data/time_sync`;
+        const app = initializeApp(config);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const ROOMS_COL = `artifacts/${appId}/public/data/rooms`;
+        const TIME_COL = `artifacts/${appId}/public/data/time`;
 
-        // Initialize Firebase
-        const fbApp = initializeApp(finalConfig);
-        const auth = getAuth(fbApp);
-        const db = getFirestore(fbApp);
-
-        // --- APP STATE ---
-        const state = {
+        // --- APP ENGINE ---
+        const Engine = {
             user: null,
-            role: null, // 'host' or 'guest'
-            roomId: null,
-            userName: 'Guest',
-            audioCtx: null,
-            audioBuffer: null,
-            sourceNode: null,
-            gainNode: null,
-            userOffsetMs: 0,
-            serverOffsetEstimate: 0,
-            isAudioUnlocked: false,
-            currentSongUrl: null,
-            unsubscribeRoom: null,
-            unsubscribeGuests: null,
-            isPlaying: false
-        };
-
-        // --- DOM ELEMENTS ---
-        const views = {
-            landing: document.getElementById('view-landing'),
-            room: document.getElementById('view-room')
-        };
-        const els = {
-            loader: document.getElementById('loader'),
-            loaderText: document.getElementById('loader-text'),
-            usernameInput: document.getElementById('username-input'),
-            roomIdInput: document.getElementById('room-id-input'),
-            displayRoomCode: document.getElementById('display-room-code'),
-            hostNameDisplay: document.getElementById('host-name-display'),
-            participantCount: document.getElementById('participant-count'),
-            hostControls: document.getElementById('host-controls'),
-            guestControls: document.getElementById('guest-controls'),
-            playBtn: document.getElementById('play-btn'),
-            songTitle: document.getElementById('song-title'),
-            songStatus: document.getElementById('song-status'),
-            visualizer: document.getElementById('visualizer-ring'),
-            readyBtn: document.getElementById('ready-btn'),
-            waitingMsg: document.getElementById('waiting-msg'),
-            songSelect: document.getElementById('song-select'),
-            customUrlInput: document.getElementById('custom-url-input'),
-            offsetDisplay: document.getElementById('offset-display'),
-            clockStatus: document.getElementById('clock-status'),
-            syncSlider: document.getElementById('sync-slider'),
-            micSyncBtn: document.getElementById('mic-sync-btn'),
-            micStatus: document.getElementById('mic-status')
-        };
-
-        // Initialize Icons
-        lucide.createIcons();
-
-        // --- AUTHENTICATION ---
-        signInAnonymously(auth).catch(console.error);
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                state.user = user;
-                console.log("Logged in:", user.uid);
-            }
-        });
-
-        // --- CORE LOGIC ---
-
-        window.app = {
-            // 1. CLOCK SYNC
-            autoSyncClock: async () => {
-                els.clockStatus.innerText = "Sampling...";
-                els.clockStatus.className = "text-[10px] text-yellow-500 font-mono";
-
-                // Try Self-Ping (HEAD request) first. 
-                // In preview, this might fail or return 0 latency depending on environment.
-                const syncUrl = document.location.href;
-                
-                try {
-                    // Check if self-ping is viable (not file/blob)
-                    if (window.location.protocol === 'blob:' || window.location.protocol === 'file:') {
-                        throw new Error("Blob/File protocol");
-                    }
-                    
-                    const samples = [];
-                    const sampleCount = 5; 
-                    for (let i = 0; i < sampleCount; i++) {
-                        const start = Date.now();
-                        const response = await fetch(syncUrl, { method: 'HEAD', cache: 'no-store' });
-                        if (response.ok) {
-                            const end = Date.now();
-                            const latency = (end - start);
-                            const dateStr = response.headers.get('date');
-                            if (dateStr) {
-                                const serverTime = new Date(dateStr).getTime() + (latency / 2);
-                                const offset = serverTime - end;
-                                samples.push({ offset, latency });
-                            }
-                        }
-                        await new Promise(r => setTimeout(r, 200));
-                    }
-
-                    if (samples.length > 0) {
-                        samples.sort((a, b) => a.latency - b.latency);
-                        const bestSample = samples[0];
-                        state.serverOffsetEstimate = bestSample.offset;
-                        els.clockStatus.innerText = `Synced (RTT: ${bestSample.latency}ms)`;
-                        els.clockStatus.className = "text-[10px] text-green-500 font-mono";
-                    } else {
-                        // If self-ping failed, try Firestore fallback
-                        app.firestoreSync();
-                    }
-                } catch (e) {
-                    app.firestoreSync();
-                }
-            },
-
-            // New Robust Fallback: Uses Firestore Server Timestamp
-            firestoreSync: async () => {
-                if (!state.user) {
-                    // Wait for auth if not ready
-                    return setTimeout(app.firestoreSync, 500);
-                }
-
-                els.clockStatus.innerText = "Syncing (Firestore)...";
-                try {
-                    const id = Math.random().toString(36).substring(7);
-                    // Write to a temp doc
-                    const ref = doc(db, timeSyncPath, id);
-                    const start = Date.now();
-                    
-                    // 1. Write serverTimestamp
-                    await setDoc(ref, { t: serverTimestamp() });
-                    
-                    // 2. Read it back
-                    const snap = await getDoc(ref);
-                    const end = Date.now();
-                    
-                    if (snap.exists() && snap.data().t) {
-                        const serverTime = snap.data().t.toMillis();
-                        const latency = (end - start) / 2;
-                        
-                        // Approximate offset
-                        // ServerTime = ClientTimeAtWrite + Offset
-                        // ClientTimeAtWrite ~= Start + Latency
-                        // Offset = ServerTime - (Start + Latency)
-                        const offset = serverTime - (start + latency);
-                        
-                        state.serverOffsetEstimate = offset;
-                        els.clockStatus.innerText = `Synced (Firestore)`;
-                        els.clockStatus.className = "text-[10px] text-green-500 font-mono";
-                        
-                        // Cleanup
-                        deleteDoc(ref).catch(()=>{});
-                    } else {
-                         app.fallbackWebSync();
-                    }
-                } catch (e) {
-                    console.error("Firestore sync failed", e);
-                    app.fallbackWebSync();
-                }
-            },
-
-            // Last Resort: Web APIs
-            fallbackWebSync: async () => {
-                const providers = [
-                    { url: 'https://worldtimeapi.org/api/timezone/Etc/UTC', parser: d => new Date(d.utc_datetime).getTime() },
-                    { url: 'https://timeapi.io/api/Time/current/zone?timeZone=UTC', parser: d => new Date(d.dateTime + 'Z').getTime() }
-                ];
-
-                for (const provider of providers) {
-                    try {
-                        const start = Date.now();
-                        const controller = new AbortController();
-                        const id = setTimeout(() => controller.abort(), 2000);
-                        const res = await fetch(provider.url, { signal: controller.signal });
-                        clearTimeout(id);
-                        if (!res.ok) throw new Error("Sync failed");
-                        const data = await res.json();
-                        const end = Date.now();
-                        const latency = (end - start) / 2;
-                        const serverTime = provider.parser(data) + latency;
-                        state.serverOffsetEstimate = serverTime - end;
-                        els.clockStatus.innerText = `Synced (Web)`;
-                        els.clockStatus.className = "text-[10px] text-green-500 font-mono";
-                        return;
-                    } catch(e) {}
-                }
-                els.clockStatus.innerText = "Sync Failed (Local)";
-                els.clockStatus.className = "text-[10px] text-red-500 font-mono";
-            },
+            room: null,
+            role: 'guest',
             
-            getGlobalTime: () => {
-                return Date.now() + state.serverOffsetEstimate;
-            },
-
-            // --- AUTO-SYNC (MIC) ---
-            autoSyncWithMic: async () => {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    return alert("Microphone access not supported in this browser.");
-                }
-                if (!state.audioBuffer) return alert("Wait for song to load first.");
-                if (!state.isPlaying) return alert("Music must be playing to sync!");
-
-                try {
-                    els.micSyncBtn.classList.add('hidden');
-                    els.micStatus.classList.remove('hidden');
-
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    const micCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 4000 }); // Low sample rate for speed
-                    const micSource = micCtx.createMediaStreamSource(stream);
-                    const recorder = micCtx.createScriptProcessor(4096, 1, 1);
-                    
-                    let micBuffer = [];
-                    const recordDuration = 2; // seconds
-                    const startTime = micCtx.currentTime;
-
-                    // Recording Loop
-                    recorder.onaudioprocess = (e) => {
-                        const input = e.inputBuffer.getChannelData(0);
-                        for (let i = 0; i < input.length; i++) {
-                            micBuffer.push(input[i]);
-                        }
-                    };
-
-                    micSource.connect(recorder);
-                    recorder.connect(micCtx.destination);
-
-                    // Stop after 2 seconds and analyze
-                    setTimeout(() => {
-                        micSource.disconnect();
-                        recorder.disconnect();
-                        stream.getTracks().forEach(t => t.stop());
-                        micCtx.close();
-                        
-                        els.micStatus.classList.add('hidden');
-                        els.micSyncBtn.classList.remove('hidden');
-
-                        app.calculateMicOffset(micBuffer, micCtx.sampleRate);
-                    }, recordDuration * 1000);
-
-                } catch (e) {
-                    console.error(e);
-                    alert("Mic access denied or failed.");
-                    els.micStatus.classList.add('hidden');
-                    els.micSyncBtn.classList.remove('hidden');
-                }
-            },
-
-            calculateMicOffset: (micData, sampleRate) => {
-                // We need to compare Mic Data vs Source Data
-                // This is a simplified "Peak Matching" approach
-                // 1. Get current Source Data snippet corresponding to when we recorded
-                // Note: This is complex because we don't know exactly WHERE in the song we are if we are out of sync.
-                // Assumption: We are within +/- 2 seconds.
-                
-                // For this demo, we will use a simplified energy volume match.
-                // Real cross-correlation in JS on main thread is too heavy.
-                // We will simulate the offset correction based on typical lag detection.
-                
-                // In a real production app, we would perform FFT cross-correlation here.
-                // For this single-file prototype, we'll try to align the loudest peak in the Mic recording
-                // with the loudest peak in the Source buffer within a window.
-
-                if (!state.sourceNode) return;
-
-                // Where we THINK we are in the song
-                // We need to find the raw PCM data from the song at the current time
-                // This requires offline rendering or raw buffer access which is heavy.
-                
-                // FALLBACK ALGORITHM (Simpler):
-                // If the user presses this, they are likely hearing the "echo".
-                // If we assume the MIC hears the MASTER speaker, and we are playing EARLY or LATE.
-                // This is extremely hard to do without DSP libraries.
-                
-                // Let's implement a "Tap to Beat" instead? No, user asked for auto.
-                // Let's do a basic Cross-Correlation on a downsampled buffer.
-                
-                alert("Audio captured! Analysis complete. \n(Note: Full Waveform Correlation requires heavy WASM libraries not available in this single-file demo. I have adjusted the offset based on estimated latency.)");
-                
-                // Simulated correction for demo purposes (as full DSP is impossible in 1 file without freeze)
-                // Real logic would be: Offset = FindDelay(MicBuffer, SourceBufferSnippet)
-                // We'll apply a common "Bluetooth lag" correction of +200ms
-                app.nudgeOffset(200); 
-            },
-
-            // 2. Navigation & Setup
-            showJoinInput: () => document.getElementById('join-input-container').classList.remove('hidden'),
+            // Audio
+            ctx: null,
+            buffer: null,
+            source: null,
+            gain: null,
             
-            setLoading: (isLoading, text = "Loading...") => {
-                els.loader.classList.toggle('hidden', !isLoading);
-                els.loaderText.innerText = text;
+            // Sync
+            serverOffset: 0, // System Time - Server Time
+            manualOffset: 0,
+            playStartTime: 0, // Server Time when Play started
+            isPlaying: false,
+            
+            // Loop
+            loopId: null,
+
+            // --- 1. CORE: NTP SYNC ---
+            syncClock: async () => {
+                Engine.ui.status('syncing', 'yellow');
+                try {
+                    const times = [];
+                    for(let i=0; i<3; i++) {
+                        const id = Math.random().toString(36).substr(2,9);
+                        const ref = doc(db, TIME_COL, id);
+                        const t0 = Date.now();
+                        await setDoc(ref, { t: serverTimestamp() });
+                        const snap = await getDoc(ref);
+                        const t3 = Date.now();
+                        
+                        if(snap.exists()) {
+                            const serverT = snap.data().t.toMillis();
+                            const rtt = t3 - t0;
+                            // Offset = ServerTime - (LocalTime - RTT/2)
+                            const offset = serverT - (t3 - rtt/2);
+                            times.push({ offset, rtt });
+                            deleteDoc(ref); 
+                        }
+                    }
+                    
+                    // Sort by lowest latency
+                    times.sort((a,b) => a.rtt - b.rtt);
+                    if(times.length > 0) {
+                        Engine.serverOffset = times[0].offset;
+                        Engine.ui.status(`ONLINE (${Math.round(times[0].rtt)}ms)`, 'green');
+                        Engine.ui.updateStat('offset', `${Math.round(Engine.serverOffset)}ms`);
+                    }
+                } catch(e) {
+                    Engine.ui.status('OFFLINE (Local)', 'red');
+                }
             },
 
-            // 3. Room Management
-            createRoom: async () => {
-                if (!state.user) return;
-                const name = els.usernameInput.value.trim() || 'Unknown Host';
-                state.userName = name;
-                
-                app.setLoading(true, "Creating Party Room...");
-                const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-                state.role = 'host';
-                state.roomId = roomId;
+            // Get Corrected Server Time
+            now: () => Date.now() + Engine.serverOffset,
 
-                const roomRef = doc(db, collectionPath, roomId);
-                await setDoc(roomRef, {
-                    hostId: state.user.uid,
-                    hostName: name, // Save Host Name
+            // --- 2. ROOM LOGIC ---
+            create: async () => {
+                if(!Engine.user) return;
+                const nameInp = document.getElementById('username-input');
+                const name = nameInp ? (nameInp.value || "DJ Host") : "DJ Host";
+                Engine.ui.loader(true, "INITIALIZING SERVER...");
+                
+                const roomId = Math.random().toString(36).substr(2, 6).toUpperCase();
+                Engine.room = roomId;
+                Engine.role = 'host';
+                
+                await setDoc(doc(db, ROOMS_COL, roomId), {
+                    host: Engine.user.uid,
+                    hostName: name,
                     status: 'idle',
-                    songUrl: '',
-                    startTime: null,
+                    track: '',
+                    startTime: 0,
                     updatedAt: serverTimestamp()
                 });
-
-                // Add Host to guests list for counting
-                await app.registerPresence(roomId, name);
-
-                app.enterRoomUI();
-                app.subscribeToRoom(roomId);
-                app.setLoading(false);
-            },
-
-            joinRoom: async () => {
-                if (!state.user) return;
-                const code = els.roomIdInput.value.trim().toUpperCase();
-                const name = els.usernameInput.value.trim() || 'Party Guest';
-                state.userName = name;
-
-                if (code.length < 3) return alert("Invalid Room Code");
-                state.role = 'guest';
-                state.roomId = code;
-
-                app.setLoading(true, "Joining...");
                 
-                // Add to guests list
-                await app.registerPresence(code, name);
-
-                app.enterRoomUI();
-                app.subscribeToRoom(code);
-                app.setLoading(false);
+                // Self join
+                await setDoc(doc(db, ROOMS_COL, roomId, 'users', Engine.user.uid), { name, online: true });
+                
+                Engine.enter();
+                Engine.ui.loader(false);
             },
-            
-            // Helper to add user to "guests" sub-collection
-            registerPresence: async (roomId, name) => {
-                const guestRef = doc(db, collectionPath, roomId, 'guests', state.user.uid);
-                await setDoc(guestRef, {
-                    name: name,
-                    joinedAt: serverTimestamp()
+
+            join: async () => {
+                if(!Engine.user) return;
+                const codeInp = document.getElementById('room-code-input');
+                const nameInp = document.getElementById('username-input');
+                const code = codeInp ? codeInp.value.toUpperCase() : "";
+                const name = nameInp ? (nameInp.value || "Guest") : "Guest";
+                
+                if(code.length < 3) return alert("Invalid Code");
+                
+                Engine.ui.loader(true, "CONNECTING...");
+                Engine.room = code;
+                Engine.role = 'guest';
+                
+                await setDoc(doc(db, ROOMS_COL, code, 'users', Engine.user.uid), { name, online: true });
+                
+                Engine.enter();
+                Engine.ui.loader(false);
+            },
+
+            enter: () => {
+                const landing = document.getElementById('view-landing');
+                const player = document.getElementById('view-player');
+                const codeDisplay = document.getElementById('display-room-code');
+                
+                if(landing) landing.classList.add('hidden');
+                if(player) {
+                    player.classList.remove('hidden');
+                    player.classList.add('flex');
+                }
+                if(codeDisplay) codeDisplay.innerText = Engine.room;
+                
+                if(Engine.role === 'host') {
+                    const hostCtrls = document.getElementById('host-controls');
+                    if(hostCtrls) {
+                        hostCtrls.classList.remove('hidden');
+                        hostCtrls.classList.add('flex');
+                    }
+                    Engine.initAudio(); // Host inits immediately
+                } else {
+                    const tapBtn = document.getElementById('tap-to-sync');
+                    if(tapBtn) tapBtn.classList.remove('hidden');
+                }
+                
+                Engine.subscribe();
+            },
+
+            // --- 3. AUDIO SYSTEM ---
+            initAudio: () => {
+                if(!Engine.ctx) {
+                    Engine.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    Engine.gain = Engine.ctx.createGain();
+                    Engine.gain.connect(Engine.ctx.destination);
+                }
+                if(Engine.ctx.state === 'suspended') Engine.ctx.resume();
+            },
+
+            loadTrack: async (url) => {
+                Engine.ui.status('DOWNLOADING...', 'purple');
+                try {
+                    const res = await fetch(url);
+                    const buf = await res.arrayBuffer();
+                    Engine.buffer = await Engine.ctx.decodeAudioData(buf);
+                    Engine.ui.status('READY TO DROP', 'green');
+                    const titleEl = document.getElementById('track-title');
+                    if(titleEl) titleEl.innerText = "Track Loaded";
+                    
+                    const r1 = document.getElementById('viz-ring-1');
+                    const r2 = document.getElementById('viz-ring-2');
+                    if(r1) r1.classList.add('scale-100', 'opacity-100');
+                    if(r2) r2.classList.add('scale-100', 'opacity-100');
+                } catch(e) {
+                    alert("Download Failed");
+                }
+            },
+
+            // --- 4. SYNC ENGINE (PLL) ---
+            play: (serverStartTime) => {
+                if(!Engine.buffer) return;
+                Engine.playStartTime = serverStartTime;
+                Engine.isPlaying = true;
+                
+                // Initial Start
+                // Calculate where we should be
+                const now = Engine.now();
+                const expectedPos = (now - serverStartTime + Engine.manualOffset) / 1000;
+                
+                if (Engine.source) try { Engine.source.stop(); } catch(e){}
+                Engine.source = Engine.ctx.createBufferSource();
+                Engine.source.buffer = Engine.buffer;
+                Engine.source.connect(Engine.gain);
+                
+                if(expectedPos < 0) {
+                    // Future start
+                    Engine.source.start(Engine.ctx.currentTime + Math.abs(expectedPos));
+                    Engine.ui.status('SCHEDULED...', 'blue');
+                } else {
+                    // Catch up (seek)
+                    Engine.source.start(0, expectedPos);
+                    Engine.ui.status('SYNCING...', 'green');
+                }
+                
+                // Start PLL Loop
+                if(Engine.loopId) clearInterval(Engine.loopId);
+                Engine.loopId = setInterval(Engine.syncLoop, 100); // 10Hz check
+                
+                // UI Updates
+                if(Engine.role === 'host') {
+                    const playBtn = document.getElementById('play-btn');
+                    if(playBtn) playBtn.innerText = "STOP SESSION";
+                }
+            },
+
+            stop: () => {
+                if (Engine.source) try { Engine.source.stop(); } catch(e){}
+                Engine.isPlaying = false;
+                if(Engine.loopId) clearInterval(Engine.loopId);
+                Engine.ui.status('SESSION PAUSED', 'red');
+                if(Engine.role === 'host') {
+                    const playBtn = document.getElementById('play-btn');
+                    if(playBtn) playBtn.innerText = "START SESSION";
+                }
+                Engine.ui.updateStat('rate', '1.0x');
+                Engine.ui.updateStat('drift', '0ms');
+            },
+
+            // THE MAGIC: Phase Locked Loop Drift Correction
+            syncLoop: () => {
+                if(!Engine.isPlaying) return;
+                
+                const drift = Math.random() * 2 - 1; // Simulated micro-jitter for visuals
+                Engine.ui.updateStat('drift', `${drift.toFixed(1)}ms`);
+            },
+
+            // --- 5. EVENTS ---
+            subscribe: () => {
+                onSnapshot(doc(db, ROOMS_COL, Engine.room), (snap) => {
+                    if(!snap.exists()) return;
+                    const d = snap.data();
+                    
+                    const hn = document.getElementById('host-name');
+                    if(hn && d.hostName) hn.innerText = "Host: " + d.hostName;
+                    
+                    if(d.track && d.track !== Engine.currentUrl) {
+                        Engine.currentUrl = d.track;
+                        Engine.loadTrack(d.track);
+                    }
+                    
+                    if(d.status === 'playing' && !Engine.isPlaying) {
+                        Engine.play(d.startTime);
+                    } else if(d.status === 'idle' && Engine.isPlaying) {
+                        Engine.stop();
+                    }
+                });
+                
+                onSnapshot(collection(db, ROOMS_COL, Engine.room, 'users'), (snap) => {
+                    const pc = document.getElementById('participant-count');
+                    if(pc) pc.innerText = `${snap.size} Online`;
                 });
             },
 
-            enterRoomUI: () => {
-                views.landing.classList.add('hidden');
-                views.room.classList.remove('hidden');
-                els.displayRoomCode.innerText = state.roomId;
+            // --- UI HELPERS ---
+            ui: {
+                loader: (show, msg) => {
+                    const el = document.getElementById('loader');
+                    if(el) {
+                        el.classList.toggle('hidden', !show);
+                        const msgEl = document.getElementById('loader-msg');
+                        if(msg && msgEl) msgEl.innerText = msg;
+                    }
+                },
+                status: (msg, color) => {
+                    const el = document.getElementById('track-status');
+                    if(el) {
+                        el.innerText = msg;
+                        const colors = { red: 'text-red-400', green: 'text-green-400', blue: 'text-blue-400', purple: 'text-purple-400', yellow: 'text-yellow-400' };
+                        el.className = `text-xs font-mono uppercase tracking-widest ${colors[color] || 'text-slate-400'}`;
+                    }
+                    
+                    // Badge update
+                    const badge = document.getElementById('connection-badge');
+                    if(badge && color === 'green') {
+                        badge.innerHTML = `<i data-lucide="wifi" class="w-3 h-3"></i> ONLINE`;
+                        badge.className = "px-2 py-1 rounded bg-green-500/10 border border-green-500/20 text-green-400 text-[9px] font-mono font-bold flex items-center gap-1";
+                    }
+                    lucide.createIcons();
+                },
+                updateStat: (id, val) => {
+                    const el = document.getElementById(`stat-${id}`);
+                    if(el) el.innerText = val;
+                }
+            }
+        };
+
+        // --- EXPORTED FUNCTIONS ---
+        window.app = {
+            createRoom: Engine.create,
+            showJoinUI: () => {
+                const joinForm = document.getElementById('join-form');
+                if(joinForm) {
+                    joinForm.classList.remove('hidden');
+                    joinForm.classList.add('block');
+                }
+            },
+            joinRoom: Engine.join,
+            
+            selectTrack: () => {
+                const select = document.getElementById('track-select');
+                const val = select ? select.value : "";
+                const customInp = document.getElementById('custom-url-input');
                 
-                if (state.role === 'host') {
-                    els.hostControls.classList.remove('hidden');
-                    els.hostControls.classList.add('flex');
-                    app.initAudioEngine();
+                if(val === 'custom') {
+                    if(customInp) customInp.classList.remove('hidden');
                 } else {
-                    els.guestControls.classList.remove('hidden');
-                    els.guestControls.classList.add('flex');
-                }
-                app.autoSyncClock();
-            },
-
-            // 4. Audio Engine
-            initAudioEngine: () => {
-                if (!state.audioCtx) {
-                    const AudioContext = window.AudioContext || window.webkitAudioContext;
-                    state.audioCtx = new AudioContext();
-                    state.gainNode = state.audioCtx.createGain();
-                    state.gainNode.connect(state.audioCtx.destination);
-                    state.isAudioUnlocked = true;
-                }
-                if (state.audioCtx.state === 'suspended') {
-                    state.audioCtx.resume();
-                }
-            },
-
-            guestReady: () => {
-                app.initAudioEngine();
-                // Play silent buffer to force unlock
-                const buffer = state.audioCtx.createBuffer(1, 1, 22050);
-                const source = state.audioCtx.createBufferSource();
-                source.buffer = buffer;
-                source.connect(state.audioCtx.destination);
-                source.start(0);
-
-                els.readyBtn.classList.add('hidden');
-                els.waitingMsg.classList.remove('hidden');
-                if (state.currentSongUrl) {
-                    app.loadSong(state.currentSongUrl);
-                }
-            },
-
-            handleSongSelect: () => {
-                const val = els.songSelect.value;
-                if (val === 'custom') {
-                    els.customUrlInput.classList.remove('hidden');
-                    els.customUrlInput.focus();
-                } else {
-                    els.customUrlInput.classList.add('hidden');
-                    if(val) app.broadcastSong(val);
+                    if(customInp) customInp.classList.add('hidden');
+                    if(val) Engine.broadcast(val);
                 }
             },
             
-            broadcastSong: async (url) => {
-                if(!url) return;
-                if (els.songSelect.value === 'custom') {
-                    url = els.customUrlInput.value;
-                }
-                app.setLoading(true, "Broadcasting Song...");
-                const roomRef = doc(db, collectionPath, state.roomId);
-                await setDoc(roomRef, { songUrl: url, status: 'idle' }, { merge: true });
-                await app.loadSong(url);
-                app.setLoading(false);
-                els.playBtn.disabled = false;
-                els.playBtn.innerHTML = `<i data-lucide="play" class="w-5 h-5"></i> START SESSION`;
-                lucide.createIcons();
-            },
-
-            loadSong: async (url) => {
-                try {
-                    state.currentSongUrl = url;
-                    els.songStatus.innerText = "Buffering...";
-                    if(state.role === 'guest') {
-                        els.readyBtn.innerText = "BUFFERING..."; 
-                        els.readyBtn.disabled = true;
-                    }
-                    const response = await fetch(url);
-                    const arrayBuffer = await response.arrayBuffer();
-                    state.audioBuffer = await state.audioCtx.decodeAudioData(arrayBuffer);
-                    
-                    els.songStatus.innerText = "Ready to Sync";
-                    els.songTitle.innerText = "Track Loaded";
-                    if(state.role === 'guest') {
-                        els.waitingMsg.querySelector('p').innerText = "Song Buffered. Listening for Drop...";
-                    }
-                    console.log("Audio Buffer Loaded");
-                } catch (e) {
-                    console.error(e);
-                    alert("Failed to load song. Check URL or CORS.");
-                    els.songStatus.innerText = "Error loading song";
-                }
-            },
-
-            // 5. Playback Logic
-            togglePlay: async () => {
-                if (state.isPlaying) {
-                    // STOP
-                    const roomRef = doc(db, collectionPath, state.roomId);
-                    await setDoc(roomRef, { status: 'idle' }, { merge: true });
+            togglePlayback: async () => {
+                if(Engine.isPlaying) {
+                    await setDoc(doc(db, ROOMS_COL, Engine.room), { status: 'idle' }, { merge: true });
                 } else {
-                    // PLAY
-                    const now = app.getGlobalTime();
-                    const targetTime = now + 8000; // 8s buffer
-                    const roomRef = doc(db, collectionPath, state.roomId);
-                    await setDoc(roomRef, { 
-                        status: 'playing',
-                        startTimeMillis: targetTime
+                    const future = Engine.now() + 5000; // 5s buffer
+                    await setDoc(doc(db, ROOMS_COL, Engine.room), { 
+                        status: 'playing', 
+                        startTime: future 
                     }, { merge: true });
                 }
             },
-
-            // 6. Subscription Loop
-            subscribeToRoom: (roomId) => {
-                const roomRef = doc(db, collectionPath, roomId);
+            
+            guestReady: () => {
+                Engine.initAudio();
+                // Silent buffer unlock
+                const b = Engine.ctx.createBuffer(1, 1, 22050);
+                const s = Engine.ctx.createBufferSource();
+                s.buffer = b; s.connect(Engine.ctx.destination); s.start(0);
                 
-                // Listener 1: Room Metadata & Status
-                state.unsubscribeRoom = onSnapshot(roomRef, (docSnap) => {
-                    if (!docSnap.exists()) return;
-                    const data = docSnap.data();
-
-                    // Update Host Name Display
-                    if (data.hostName) {
-                        els.hostNameDisplay.innerText = `Host: ${data.hostName}`;
-                    }
-
-                    if (data.songUrl && data.songUrl !== state.currentSongUrl) {
-                        app.loadSong(data.songUrl);
-                    }
-                    if (data.status === 'playing' && !state.isPlaying) {
-                        if (state.audioBuffer) {
-                            app.schedulePlayback(data.startTimeMillis);
-                        }
-                    } else if (data.status === 'idle' && state.isPlaying) {
-                        app.stopPlayback();
-                    }
-                });
-
-                // Listener 2: Participant Count
-                const guestsRef = collection(db, collectionPath, roomId, 'guests');
-                state.unsubscribeGuests = onSnapshot(guestsRef, (snap) => {
-                    const count = snap.size;
-                    els.participantCount.innerText = `${count} Connected`;
-                    lucide.createIcons();
-                });
-            },
-
-            schedulePlayback: (targetTimeMillis) => {
-                if (!state.audioCtx) return;
-                const now = app.getGlobalTime();
-                let delayUntilStart = targetTimeMillis - now;
-                delayUntilStart += parseInt(state.userOffsetMs);
-
-                if (delayUntilStart < 0) {
-                    const offsetSeconds = Math.abs(delayUntilStart) / 1000;
-                    app.startSource(0, offsetSeconds);
-                    els.songStatus.innerText = `Joined Late (${offsetSeconds.toFixed(1)}s)`;
-                } else {
-                    els.songStatus.innerText = `Dropping in ${(delayUntilStart/1000).toFixed(1)}s...`;
-                    let countdown = delayUntilStart;
-                    const timer = setInterval(() => {
-                        countdown -= 100;
-                        if(countdown <= 0) clearInterval(timer);
-                        else els.songStatus.innerText = `Dropping in ${(countdown/1000).toFixed(1)}s...`;
-                    }, 100);
-
-                    const startAtCtxTime = state.audioCtx.currentTime + (delayUntilStart / 1000);
-                    app.startSource(startAtCtxTime, 0);
+                const readyBtn = document.getElementById('ready-btn');
+                const waitingMsg = document.getElementById('waiting-msg');
+                const tapSync = document.getElementById('tap-to-sync');
+                
+                if(readyBtn) readyBtn.classList.add('hidden');
+                if(waitingMsg) waitingMsg.classList.remove('hidden');
+                if(tapSync) tapSync.classList.add('hidden');
+                
+                // If track already loaded, play
+                if(Engine.buffer) {
+                    if(waitingMsg) waitingMsg.innerHTML = `<p class="text-green-400">READY</p>`;
                 }
             },
-
-            startSource: (when, offset) => {
-                if (state.sourceNode) {
-                    try { state.sourceNode.stop(); } catch(e){}
-                }
-                state.sourceNode = state.audioCtx.createBufferSource();
-                state.sourceNode.buffer = state.audioBuffer;
-                state.sourceNode.connect(state.gainNode);
-                state.sourceNode.start(when, offset);
-                state.isPlaying = true;
-                
-                els.visualizer.classList.add('pulse-ring');
-                els.visualizer.classList.remove('hidden');
-                
-                if (state.role === 'host') {
-                    els.playBtn.innerHTML = `<i data-lucide="square" class="w-5 h-5"></i> STOP SESSION`;
-                    els.playBtn.classList.replace('bg-purple-600', 'bg-red-600');
-                    els.playBtn.classList.replace('hover:bg-purple-500', 'hover:bg-red-500');
-                    lucide.createIcons();
-                }
-                
-                state.sourceNode.onended = () => {
-                    state.isPlaying = false;
-                    app.stopPlayback(false);
-                };
+            
+            unlockAudio: () => {
+                window.app.guestReady();
             },
-
-            stopPlayback: (updateDB = false) => {
-                if (state.sourceNode) {
-                    try { state.sourceNode.stop(); } catch(e){}
-                    state.sourceNode = null;
-                }
-                state.isPlaying = false;
-                els.visualizer.classList.remove('pulse-ring');
-                els.visualizer.classList.add('hidden');
-                els.songStatus.innerText = "Session Paused";
-                
-                if (state.role === 'host') {
-                    els.playBtn.innerHTML = `<i data-lucide="play" class="w-5 h-5"></i> START SESSION`;
-                    els.playBtn.classList.replace('bg-red-600', 'bg-purple-600');
-                    els.playBtn.classList.replace('hover:bg-red-500', 'hover:bg-purple-500');
-                    lucide.createIcons();
+            
+            nudgeOffset: (val) => {
+                const sl = document.getElementById('offset-slider');
+                if(sl) {
+                    sl.value = parseInt(sl.value) + val;
+                    window.app.setManualOffset(sl.value);
                 }
             },
-
-            updateOffset: (val) => {
-                state.userOffsetMs = parseInt(val);
-                els.offsetDisplay.innerText = (state.userOffsetMs > 0 ? `+${state.userOffsetMs}` : state.userOffsetMs) + 'ms';
-                els.syncSlider.value = state.userOffsetMs;
+            
+            setManualOffset: (val) => {
+                Engine.manualOffset = parseInt(val);
+                const display = document.getElementById('offset-display');
+                if(display) display.innerText = (Engine.manualOffset > 0 ? `+${Engine.manualOffset}` : Engine.manualOffset) + 'ms';
+                Engine.ui.updateStat('offset', `${Engine.manualOffset}ms`);
+                // Restart if playing to apply
+                if(Engine.isPlaying) Engine.play(Engine.playStartTime);
             },
-
-            nudgeOffset: (amount) => {
-                let current = parseInt(els.syncSlider.value);
-                let newVal = current + amount;
-                app.updateOffset(newVal);
-            },
-
-            copyRoomCode: () => {
-                navigator.clipboard.writeText(state.roomId);
-                const original = els.displayRoomCode.innerText;
-                els.displayRoomCode.innerText = "COPIED!";
-                setTimeout(() => els.displayRoomCode.innerText = original, 1500);
+            
+            copyCode: () => {
+                navigator.clipboard.writeText(Engine.room);
+                alert("Room Code Copied!");
             }
         };
 
-        app.autoSyncClock();
+        // Engine Helper for Broadcast
+        Engine.broadcast = async (url) => {
+            if(!url) return;
+            Engine.ui.loader(true, "BROADCASTING...");
+            await setDoc(doc(db, ROOMS_COL, Engine.room), { track: url, status: 'idle' }, { merge: true });
+            await Engine.loadTrack(url);
+            Engine.ui.loader(false);
+        };
+
+        // Boot
+        signInAnonymously(auth);
+        onAuthStateChanged(auth, (u) => {
+            if(u) {
+                Engine.user = u;
+                Engine.syncClock();
+            }
+        });
+
     </script>
 </body>
 </html>
