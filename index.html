@@ -24,6 +24,7 @@
             background: #a855f7;
             margin-top: -8px;
             box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+            cursor: pointer;
         }
         input[type=range]::-webkit-slider-runnable-track {
             width: 100%;
@@ -62,7 +63,12 @@
                 SYNC<span class="text-white">WAVE</span>
             </h1>
             <p class="text-slate-400 text-xs tracking-widest mt-1">DISTRIBUTED SPEAKER SYSTEM</p>
-            <div id="clock-status" class="text-[10px] text-yellow-500 mt-2 font-mono">Syncing Clocks...</div>
+            <div class="flex items-center justify-center gap-2 mt-2">
+                <div id="clock-status" class="text-[10px] text-yellow-500 font-mono">Connecting...</div>
+                <button onclick="app.autoSyncClock()" class="text-[10px] bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded border border-slate-600 text-purple-300 transition-colors flex items-center gap-1">
+                    <i data-lucide="refresh-cw" class="w-3 h-3"></i> Auto-Fix Clock
+                </button>
+            </div>
         </div>
 
         <!-- VIEW: LOGIN / LANDING -->
@@ -165,14 +171,28 @@
             <!-- SYNC NUDGE (Common) -->
             <div class="w-full mt-8 pt-6 border-t border-slate-700/50">
                 <div class="flex justify-between items-center mb-2">
-                    <label class="text-xs font-bold text-slate-400 uppercase tracking-widest">Latency Fix</label>
+                    <label class="text-xs font-bold text-slate-400 uppercase tracking-widest">Manual Sync Fix</label>
                     <span id="offset-display" class="text-xs font-mono text-purple-400">0ms</span>
                 </div>
-                <!-- INCREASED RANGE: +/- 5000ms -->
-                <input type="range" id="sync-slider" min="-5000" max="5000" value="0" step="10" oninput="app.updateOffset(this.value)">
-                <p class="text-[10px] text-slate-500 mt-2 text-center">
-                    Hearing an echo? Slide left or right until the beat matches.
-                </p>
+                
+                <!-- Fine Tune Controls -->
+                <div class="flex items-center gap-3 bg-slate-800/50 p-3 rounded-xl border border-slate-700">
+                    <button onclick="app.nudgeOffset(-10)" class="w-10 h-10 flex items-center justify-center bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-bold transition-colors active:scale-95" title="-10ms">
+                        <i data-lucide="minus" class="w-4 h-4"></i>
+                    </button>
+                    
+                    <div class="flex-1">
+                        <input type="range" id="sync-slider" min="-3000" max="3000" value="0" step="10" oninput="app.updateOffset(this.value)">
+                        <div class="flex justify-between text-[8px] text-slate-500 mt-1 font-mono uppercase">
+                            <span>Earlier</span>
+                            <span>Later</span>
+                        </div>
+                    </div>
+
+                    <button onclick="app.nudgeOffset(10)" class="w-10 h-10 flex items-center justify-center bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-bold transition-colors active:scale-95" title="+10ms">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                    </button>
+                </div>
             </div>
 
         </div>
@@ -265,7 +285,8 @@
             songSelect: document.getElementById('song-select'),
             customUrlInput: document.getElementById('custom-url-input'),
             offsetDisplay: document.getElementById('offset-display'),
-            clockStatus: document.getElementById('clock-status')
+            clockStatus: document.getElementById('clock-status'),
+            syncSlider: document.getElementById('sync-slider')
         };
 
         // Initialize Icons
@@ -283,72 +304,99 @@
         // --- CORE LOGIC ---
 
         window.app = {
-            // 1. CLOCK SYNC (UPDATED)
-            // Tries multiple providers and gracefully degrades to local clock on error
-            initTimeSync: async () => {
-                const syncProviders = [
-                    { 
-                        url: 'https://worldtimeapi.org/api/timezone/Etc/UTC', 
-                        parser: d => new Date(d.utc_datetime).getTime() 
-                    },
-                    { 
-                        url: 'https://timeapi.io/api/Time/current/zone?timeZone=UTC', 
-                        parser: d => new Date(d.dateTime + 'Z').getTime() 
-                    },
-                    // Fallback: Fetch current page headers (works if hosted on Vercel/Netlify/Firebase)
-                    {
-                        url: document.location.href,
-                        method: 'HEAD',
-                        type: 'header',
-                        parser: (headers) => {
-                            const dateStr = headers.get('date');
-                            if (!dateStr) throw new Error("No Date header");
-                            return new Date(dateStr).getTime();
+            // 1. CLOCK SYNC (BURST MODE)
+            // Takes multiple samples and picks the one with the lowest latency (RTT)
+            autoSyncClock: async () => {
+                els.clockStatus.innerText = "Sampling...";
+                els.clockStatus.className = "text-[10px] text-yellow-500 font-mono";
+
+                // In Blob/Preview environments, self-fetch fails. Detect and skip.
+                if (window.location.protocol === 'blob:' || window.location.protocol === 'file:') {
+                    console.log("Preview environment detected: Skipping self-ping.");
+                    return app.fallbackSync();
+                }
+
+                const syncUrl = document.location.href;
+                const samples = [];
+                const sampleCount = 5; // How many times to ping
+
+                try {
+                    for (let i = 0; i < sampleCount; i++) {
+                        const start = Date.now();
+                        
+                        // cache: 'no-store' forces a real network request, bypassing browser cache
+                        const response = await fetch(syncUrl, { method: 'HEAD', cache: 'no-store' });
+                        
+                        if (response.ok) {
+                            const end = Date.now();
+                            const latency = (end - start); // Total Round Trip Time
+                            
+                            // Get server time from header
+                            const dateStr = response.headers.get('date');
+                            if (dateStr) {
+                                const serverTime = new Date(dateStr).getTime() + (latency / 2);
+                                const offset = serverTime - end;
+                                samples.push({ offset, latency });
+                            }
                         }
+                        
+                        // Small delay between samples
+                        await new Promise(r => setTimeout(r, 200));
                     }
+
+                    if (samples.length > 0) {
+                        // Sort by lowest latency (closest to truth)
+                        samples.sort((a, b) => a.latency - b.latency);
+                        
+                        // Use the offset from the fastest ping
+                        const bestSample = samples[0];
+                        state.serverOffsetEstimate = bestSample.offset;
+
+                        els.clockStatus.innerText = `Synced (RTT: ${bestSample.latency}ms)`;
+                        els.clockStatus.className = "text-[10px] text-green-500 font-mono";
+                        console.log("Auto-Fix Success. Best Offset:", bestSample.offset, "Latency:", bestSample.latency);
+                    } else {
+                        // If no samples succeeded, use fallback
+                        app.fallbackSync();
+                    }
+                } catch (e) {
+                    console.warn("Self-ping failed (likely offline or restricted). Using fallback.");
+                    app.fallbackSync();
+                }
+            },
+
+            fallbackSync: async () => {
+                const providers = [
+                    { url: 'https://worldtimeapi.org/api/timezone/Etc/UTC', parser: d => new Date(d.utc_datetime).getTime() },
+                    { url: 'https://timeapi.io/api/Time/current/zone?timeZone=UTC', parser: d => new Date(d.dateTime + 'Z').getTime() }
                 ];
 
-                for (const provider of syncProviders) {
+                for (const provider of providers) {
                     try {
                         const start = Date.now();
                         const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout
+                        const id = setTimeout(() => controller.abort(), 2000);
+                        const res = await fetch(provider.url, { signal: controller.signal });
+                        clearTimeout(id);
                         
-                        const fetchOpts = { signal: controller.signal };
-                        if (provider.method) fetchOpts.method = provider.method;
-
-                        const response = await fetch(provider.url, fetchOpts);
-                        clearTimeout(timeoutId);
+                        if (!res.ok) throw new Error("Sync failed");
                         
-                        if(!response.ok && provider.type !== 'header') throw new Error("Network response was not ok");
-                        
+                        const data = await res.json();
                         const end = Date.now();
                         const latency = (end - start) / 2;
                         
-                        let serverTime;
-                        if (provider.type === 'header') {
-                            serverTime = provider.parser(response.headers) + latency;
-                        } else {
-                            const data = await response.json();
-                            serverTime = provider.parser(data) + latency;
-                        }
-                        
+                        const serverTime = provider.parser(data) + latency;
                         state.serverOffsetEstimate = serverTime - end;
                         
-                        els.clockStatus.innerText = `Clock Synced (${state.serverOffsetEstimate.toFixed(0)}ms)`;
-                        els.clockStatus.className = "text-[10px] mt-2 font-mono text-green-500";
-                        console.log("Time Sync Success via:", provider.url);
-                        return; // Exit function on success
-                    } catch (e) {
-                        console.warn(`Sync provider failed: ${provider.url}`, e);
-                        // Continue to next provider...
-                    }
+                        els.clockStatus.innerText = `Synced (Web)`;
+                        els.clockStatus.className = "text-[10px] text-green-500 font-mono";
+                        return;
+                    } catch(e) { console.warn("Fallback provider failed", e); }
                 }
-
-                // If loop finishes without returning, all providers failed
-                els.clockStatus.innerText = "Using Local Clock (Offline)";
-                els.clockStatus.className = "text-[10px] mt-2 font-mono text-red-500";
-                console.log("All time sync providers failed. Defaulting to local clock.");
+                
+                // If all fail
+                els.clockStatus.innerText = "Sync Failed (Local)";
+                els.clockStatus.className = "text-[10px] text-red-500 font-mono";
             },
             
             // Helper to get corrected global time
@@ -408,6 +456,9 @@
                     els.guestControls.classList.remove('hidden');
                     els.guestControls.classList.add('flex');
                 }
+                
+                // Trigger auto-sync when entering room
+                app.autoSyncClock();
             },
 
             // 4. Audio Engine
@@ -629,9 +680,17 @@
                 }
             },
 
+            // --- Fine Tune Logic ---
             updateOffset: (val) => {
-                state.userOffsetMs = val;
-                els.offsetDisplay.innerText = (val > 0 ? `+${val}` : val) + 'ms';
+                state.userOffsetMs = parseInt(val);
+                els.offsetDisplay.innerText = (state.userOffsetMs > 0 ? `+${state.userOffsetMs}` : state.userOffsetMs) + 'ms';
+                els.syncSlider.value = state.userOffsetMs;
+            },
+
+            nudgeOffset: (amount) => {
+                let current = parseInt(els.syncSlider.value);
+                let newVal = current + amount;
+                app.updateOffset(newVal);
             },
 
             copyRoomCode: () => {
@@ -643,7 +702,7 @@
         };
 
         // Start Clock Sync Immediately
-        app.initTimeSync();
+        app.autoSyncClock();
 
     </script>
 </body>
