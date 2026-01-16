@@ -62,6 +62,7 @@
                 SYNC<span class="text-white">WAVE</span>
             </h1>
             <p class="text-slate-400 text-xs tracking-widest mt-1">DISTRIBUTED SPEAKER SYSTEM</p>
+            <div id="clock-status" class="text-[10px] text-yellow-500 mt-2 font-mono">Syncing Clocks...</div>
         </div>
 
         <!-- VIEW: LOGIN / LANDING -->
@@ -167,7 +168,8 @@
                     <label class="text-xs font-bold text-slate-400 uppercase tracking-widest">Latency Fix</label>
                     <span id="offset-display" class="text-xs font-mono text-purple-400">0ms</span>
                 </div>
-                <input type="range" id="sync-slider" min="-500" max="500" value="0" step="10" oninput="app.updateOffset(this.value)">
+                <!-- INCREASED RANGE: +/- 2000ms -->
+                <input type="range" id="sync-slider" min="-2000" max="2000" value="0" step="10" oninput="app.updateOffset(this.value)">
                 <p class="text-[10px] text-slate-500 mt-2 text-center">
                     Hearing an echo? Slide left or right until the beat matches.
                 </p>
@@ -235,7 +237,7 @@
             sourceNode: null,
             gainNode: null,
             userOffsetMs: 0,
-            serverOffsetEstimate: 0,
+            serverOffsetEstimate: 0, // Difference between Global Time and Local Time
             isAudioUnlocked: false,
             currentSongUrl: null,
             unsubscribeRoom: null,
@@ -262,7 +264,8 @@
             waitingMsg: document.getElementById('waiting-msg'),
             songSelect: document.getElementById('song-select'),
             customUrlInput: document.getElementById('custom-url-input'),
-            offsetDisplay: document.getElementById('offset-display')
+            offsetDisplay: document.getElementById('offset-display'),
+            clockStatus: document.getElementById('clock-status')
         };
 
         // Initialize Icons
@@ -280,7 +283,64 @@
         // --- CORE LOGIC ---
 
         window.app = {
-            // 1. Navigation & Setup
+            // 1. CLOCK SYNC (UPDATED)
+            // Tries multiple providers and gracefully degrades to local clock on error
+            initTimeSync: async () => {
+                // List of providers to try in order
+                const syncProviders = [
+                    { 
+                        url: 'https://worldtimeapi.org/api/timezone/Etc/UTC', 
+                        parser: d => new Date(d.utc_datetime).getTime() 
+                    },
+                    { 
+                        url: 'https://timeapi.io/api/Time/current/zone?timeZone=UTC', 
+                        parser: d => new Date(d.dateTime + 'Z').getTime() 
+                    }
+                ];
+
+                for (const provider of syncProviders) {
+                    try {
+                        const start = Date.now();
+                        // Add timeout to prevent hanging
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout
+                        
+                        const response = await fetch(provider.url, { signal: controller.signal });
+                        clearTimeout(timeoutId);
+                        
+                        if(!response.ok) throw new Error("Network response was not ok");
+                        
+                        const data = await response.json();
+                        const end = Date.now();
+                        const latency = (end - start) / 2;
+                        
+                        // Calculate offset
+                        const serverTime = provider.parser(data) + latency;
+                        state.serverOffsetEstimate = serverTime - end;
+                        
+                        // Update UI - Success
+                        els.clockStatus.innerText = `Clock Synced (${state.serverOffsetEstimate.toFixed(0)}ms)`;
+                        els.clockStatus.className = "text-[10px] mt-2 font-mono text-green-500";
+                        console.log("Time Sync Success via:", provider.url);
+                        return; // Exit function on success
+                    } catch (e) {
+                        console.warn(`Sync provider failed: ${provider.url}`, e);
+                        // Continue to next provider...
+                    }
+                }
+
+                // If loop finishes without returning, all providers failed
+                els.clockStatus.innerText = "Using Local Clock (Offline)";
+                els.clockStatus.className = "text-[10px] mt-2 font-mono text-slate-500";
+                console.log("All time sync providers failed. Defaulting to local clock.");
+            },
+            
+            // Helper to get corrected global time
+            getGlobalTime: () => {
+                return Date.now() + state.serverOffsetEstimate;
+            },
+
+            // 2. Navigation & Setup
             showJoinInput: () => document.getElementById('join-input-container').classList.remove('hidden'),
             
             setLoading: (isLoading, text = "Loading...") => {
@@ -288,7 +348,7 @@
                 els.loaderText.innerText = text;
             },
 
-            // 2. Room Management
+            // 3. Room Management
             createRoom: async () => {
                 if (!state.user) return;
                 app.setLoading(true, "Creating Party Room...");
@@ -334,7 +394,7 @@
                 }
             },
 
-            // 3. Audio Engine
+            // 4. Audio Engine
             initAudioEngine: () => {
                 if (!state.audioCtx) {
                     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -429,7 +489,7 @@
                 }
             },
 
-            // 4. Playback Logic
+            // 5. Playback Logic
             togglePlay: async () => {
                 if (state.isPlaying) {
                     // STOP Logic
@@ -437,20 +497,10 @@
                     await setDoc(roomRef, { status: 'idle' }, { merge: true });
                 } else {
                     // PLAY Logic
-                    // We set start time in future (e.g. +3 seconds)
-                    const delaySeconds = 3; 
-                    // Need server time estimate. simpler: Just write serverTimestamp to DB
-                    // But we need to know what that time IS to play locally.
-                    // Workaround: We write status 'pre-start', then Cloud Function? No functions.
-                    // Approach: Host decides time based on local clock + offset? 
-                    // Robust approach for this env:
-                    // Host writes { startTime: serverTimestamp() } and a "delay" field.
-                    // BUT host doesn't know serverTimestamp value until read back.
-                    // Simplification: Host writes { targetTime: Date.now() + 3000 } using host clock.
-                    // IF we assume NTP is decent on phones (usually within 100ms).
-                    
-                    const now = Date.now();
-                    const targetTime = now + 3000; // 3 seconds in future
+                    // Use CORRECTED global time
+                    const now = app.getGlobalTime();
+                    // Increased buffer to 5 seconds for slow networks
+                    const targetTime = now + 5000; 
                     
                     const roomRef = doc(db, collectionPath, state.roomId);
                     await setDoc(roomRef, { 
@@ -460,7 +510,7 @@
                 }
             },
 
-            // 5. Sync Loop (Listening to Firestore)
+            // 6. Sync Loop (Listening to Firestore)
             subscribeToRoom: (roomId) => {
                 const roomRef = doc(db, collectionPath, roomId);
                 state.unsubscribeRoom = onSnapshot(roomRef, (docSnap) => {
@@ -486,12 +536,8 @@
             schedulePlayback: (targetTimeMillis) => {
                 if (!state.audioCtx) return;
                 
-                // Sync Calculation
-                // We use local system time (Date.now()) vs targetTimeMillis
-                // This assumes devices have roughly correct clocks (standard on iOS/Android)
-                // The "Nudge" slider handles the error.
-                
-                const now = Date.now();
+                // Sync Calculation using GLOBAL time
+                const now = app.getGlobalTime();
                 let delayUntilStart = targetTimeMillis - now;
                 
                 // Add user manual offset
@@ -516,7 +562,7 @@
 
                     // Web Audio API scheduling
                     // ctx.currentTime is strictly monotonic hardware time
-                    // We need to map Date.now() to ctx.currentTime
+                    // We map calculated delay to ctx time
                     const startAtCtxTime = state.audioCtx.currentTime + (delayUntilStart / 1000);
                     app.startSource(startAtCtxTime, 0);
                 }
@@ -579,6 +625,10 @@
                 setTimeout(() => els.displayRoomCode.innerText = original, 1500);
             }
         };
+
+        // Start Clock Sync Immediately
+        app.initTimeSync();
+
     </script>
 </body>
 </html>
