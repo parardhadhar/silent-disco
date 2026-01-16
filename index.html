@@ -168,8 +168,8 @@
                     <label class="text-xs font-bold text-slate-400 uppercase tracking-widest">Latency Fix</label>
                     <span id="offset-display" class="text-xs font-mono text-purple-400">0ms</span>
                 </div>
-                <!-- INCREASED RANGE: +/- 2000ms -->
-                <input type="range" id="sync-slider" min="-2000" max="2000" value="0" step="10" oninput="app.updateOffset(this.value)">
+                <!-- INCREASED RANGE: +/- 5000ms -->
+                <input type="range" id="sync-slider" min="-5000" max="5000" value="0" step="10" oninput="app.updateOffset(this.value)">
                 <p class="text-[10px] text-slate-500 mt-2 text-center">
                     Hearing an echo? Slide left or right until the beat matches.
                 </p>
@@ -286,7 +286,6 @@
             // 1. CLOCK SYNC (UPDATED)
             // Tries multiple providers and gracefully degrades to local clock on error
             initTimeSync: async () => {
-                // List of providers to try in order
                 const syncProviders = [
                     { 
                         url: 'https://worldtimeapi.org/api/timezone/Etc/UTC', 
@@ -295,30 +294,47 @@
                     { 
                         url: 'https://timeapi.io/api/Time/current/zone?timeZone=UTC', 
                         parser: d => new Date(d.dateTime + 'Z').getTime() 
+                    },
+                    // Fallback: Fetch current page headers (works if hosted on Vercel/Netlify/Firebase)
+                    {
+                        url: document.location.href,
+                        method: 'HEAD',
+                        type: 'header',
+                        parser: (headers) => {
+                            const dateStr = headers.get('date');
+                            if (!dateStr) throw new Error("No Date header");
+                            return new Date(dateStr).getTime();
+                        }
                     }
                 ];
 
                 for (const provider of syncProviders) {
                     try {
                         const start = Date.now();
-                        // Add timeout to prevent hanging
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout
                         
-                        const response = await fetch(provider.url, { signal: controller.signal });
+                        const fetchOpts = { signal: controller.signal };
+                        if (provider.method) fetchOpts.method = provider.method;
+
+                        const response = await fetch(provider.url, fetchOpts);
                         clearTimeout(timeoutId);
                         
-                        if(!response.ok) throw new Error("Network response was not ok");
+                        if(!response.ok && provider.type !== 'header') throw new Error("Network response was not ok");
                         
-                        const data = await response.json();
                         const end = Date.now();
                         const latency = (end - start) / 2;
                         
-                        // Calculate offset
-                        const serverTime = provider.parser(data) + latency;
+                        let serverTime;
+                        if (provider.type === 'header') {
+                            serverTime = provider.parser(response.headers) + latency;
+                        } else {
+                            const data = await response.json();
+                            serverTime = provider.parser(data) + latency;
+                        }
+                        
                         state.serverOffsetEstimate = serverTime - end;
                         
-                        // Update UI - Success
                         els.clockStatus.innerText = `Clock Synced (${state.serverOffsetEstimate.toFixed(0)}ms)`;
                         els.clockStatus.className = "text-[10px] mt-2 font-mono text-green-500";
                         console.log("Time Sync Success via:", provider.url);
@@ -331,7 +347,7 @@
 
                 // If loop finishes without returning, all providers failed
                 els.clockStatus.innerText = "Using Local Clock (Offline)";
-                els.clockStatus.className = "text-[10px] mt-2 font-mono text-slate-500";
+                els.clockStatus.className = "text-[10px] mt-2 font-mono text-red-500";
                 console.log("All time sync providers failed. Defaulting to local clock.");
             },
             
@@ -499,8 +515,8 @@
                     // PLAY Logic
                     // Use CORRECTED global time
                     const now = app.getGlobalTime();
-                    // Increased buffer to 5 seconds for slow networks
-                    const targetTime = now + 5000; 
+                    // Increased buffer to 8 seconds for slow networks
+                    const targetTime = now + 8000; 
                     
                     const roomRef = doc(db, collectionPath, state.roomId);
                     await setDoc(roomRef, { 
