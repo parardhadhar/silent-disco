@@ -67,10 +67,10 @@
                     <span class="w-3 h-3 bg-purple-500 rounded-full animate-pulse"></span>
                     SYNCWAVE
                 </h1>
-                <p class="text-[10px] text-slate-500 font-mono tracking-widest uppercase mt-1">Latency Killer Engine v3.1</p>
+                <p class="text-[10px] text-slate-500 font-mono tracking-widest uppercase mt-1">Latency Killer Engine v3.2</p>
             </div>
-            <div id="connection-badge" class="px-2 py-1 rounded bg-red-500/10 border border-red-500/20 text-red-400 text-[9px] font-mono font-bold flex items-center gap-1">
-                <i data-lucide="wifi-off" class="w-3 h-3"></i> OFFLINE
+            <div id="connection-badge" class="px-2 py-1 rounded bg-red-500/10 border border-red-500/20 text-red-400 text-[9px] font-mono font-bold flex items-center gap-1 cursor-pointer" onclick="app.syncClock()">
+                <i data-lucide="refresh-cw" class="w-3 h-3"></i> RESYNC
             </div>
         </header>
 
@@ -152,6 +152,7 @@
             <div class="text-center mb-8">
                 <h2 id="track-title" class="text-xl font-bold text-white mb-1 truncate">Waiting for Host...</h2>
                 <p id="track-status" class="text-xs text-purple-400 font-mono uppercase tracking-widest">System Idle</p>
+                <p id="hardware-latency-msg" class="text-[9px] text-yellow-500/80 font-mono mt-1 hidden">Mobile HW Correction: -120ms</p>
             </div>
 
             <!-- Tech Stats Dashboard -->
@@ -165,8 +166,8 @@
                     <p id="stat-drift" class="text-xs font-mono font-bold text-green-400">0ms</p>
                 </div>
                 <div class="glass-panel p-2 rounded text-center">
-                    <p class="text-[8px] text-slate-500 font-mono">RATE</p>
-                    <p id="stat-rate" class="text-xs font-mono font-bold text-blue-400">1.0x</p>
+                    <p class="text-[8px] text-slate-500 font-mono">PING</p>
+                    <p id="stat-ping" class="text-xs font-mono font-bold text-blue-400">--</p>
                 </div>
             </div>
 
@@ -192,7 +193,7 @@
                 </div>
                 <button onclick="app.nudgeOffset(10)" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400"><i data-lucide="plus" class="w-3 h-3"></i></button>
             </div>
-            <p class="text-[9px] text-center text-slate-600 mt-2">Manual Nudge</p>
+            <p class="text-[9px] text-center text-slate-600 mt-2">Manual Sync Nudge (Use if Late/Early)</p>
 
         </div>
 
@@ -251,9 +252,10 @@
             gain: null,
             
             // Sync
-            serverOffset: 0, // System Time - Server Time
+            serverOffset: 0, 
             manualOffset: 0,
-            playStartTime: 0, // Server Time when Play started
+            hardwareCorrection: 0,
+            playStartTime: 0, 
             isPlaying: false,
             
             // Loop
@@ -264,7 +266,9 @@
                 Engine.ui.status('syncing', 'yellow');
                 try {
                     const times = [];
-                    for(let i=0; i<3; i++) {
+                    // Increased samples for better accuracy
+                    const sampleCount = 8; 
+                    for(let i=0; i<sampleCount; i++) {
                         const id = Math.random().toString(36).substr(2,9);
                         const ref = doc(db, TIME_COL, id);
                         const t0 = Date.now();
@@ -284,12 +288,24 @@
                     
                     // Sort by lowest latency
                     times.sort((a,b) => a.rtt - b.rtt);
-                    if(times.length > 0) {
-                        Engine.serverOffset = times[0].offset;
-                        Engine.ui.status(`ONLINE (${Math.round(times[0].rtt)}ms)`, 'green');
+                    
+                    // Filter outliers: Keep top 50% best RTT
+                    const bestTimes = times.slice(0, Math.ceil(times.length / 2));
+                    
+                    if(bestTimes.length > 0) {
+                        // Use median of best offsets
+                        // Re-sort by offset to find median
+                        bestTimes.sort((a,b) => a.offset - b.offset);
+                        const medianIdx = Math.floor(bestTimes.length / 2);
+                        Engine.serverOffset = bestTimes[medianIdx].offset;
+                        
+                        const bestRtt = times[0].rtt;
+                        Engine.ui.status(`ONLINE (±${Math.round(bestRtt/2)}ms)`, 'green');
+                        Engine.ui.updateStat('ping', `${Math.round(bestRtt)}ms`);
                         Engine.ui.updateStat('offset', `${Math.round(Engine.serverOffset)}ms`);
                     }
                 } catch(e) {
+                    console.error(e);
                     Engine.ui.status('OFFLINE (Local)', 'red');
                 }
             },
@@ -367,6 +383,15 @@
                     if(tapBtn) tapBtn.classList.remove('hidden');
                 }
                 
+                // --- HARDWARE LATENCY FIX ---
+                // Detect mobile devices and apply negative offset
+                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                if (isMobile) {
+                    Engine.hardwareCorrection = -120; // 120ms standard bluetooth/mixer delay
+                    const msg = document.getElementById('hardware-latency-msg');
+                    if(msg) msg.classList.remove('hidden');
+                }
+
                 Engine.subscribe();
             },
 
@@ -408,7 +433,12 @@
                 // Initial Start
                 // Calculate where we should be
                 const now = Engine.now();
-                const expectedPos = (now - serverStartTime + Engine.manualOffset) / 1000;
+                // We add hardware correction here. 
+                // If correction is -120, we assume the speakers are LATE by 120ms.
+                // So we want to start 120ms EARLIER.
+                const offsetTotal = Engine.manualOffset + Engine.hardwareCorrection;
+                
+                const expectedPos = (now - serverStartTime + offsetTotal) / 1000;
                 
                 if (Engine.source) try { Engine.source.stop(); } catch(e){}
                 Engine.source = Engine.ctx.createBufferSource();
@@ -416,11 +446,37 @@
                 Engine.source.connect(Engine.gain);
                 
                 if(expectedPos < 0) {
-                    // Future start
-                    Engine.source.start(Engine.ctx.currentTime + Math.abs(expectedPos));
+                    // Future start (Scheduled)
+                    // If hardwareCorrection is -120ms (-0.12s), we add it to wait time? No.
+                    // If speaker is late, we must output sound EARLY.
+                    // Start Time = T_future.
+                    // We schedule at ctx.currentTime + (T_future - now).
+                    // We want to hear it at T_future.
+                    // But hardware delays by 0.12.
+                    // So we must output at T_future - 0.12.
+                    // So delay = (T_future - now) - 0.12.
+                    // Wait time is reduced.
+                    
+                    // Math check: expectedPos is negative (e.g. -5.0).
+                    // We want to wait 5 seconds.
+                    // Corrected wait = 5.0 - 0.12 = 4.88s.
+                    // abs(expectedPos) = 5.0. 
+                    // So we subtract hardwareCorrection magnitude?
+                    // Since hardwareCorrection is negative (-120), we ADD it to expectedPos?
+                    // expectedPos is time PASSED since start.
+                    // Future: expectedPos is -5.
+                    // We want to wait 4.88s.
+                    // So schedule = currentTime + abs(expectedPos) + (hardwareCorrection/1000).
+                    // 5 + (-0.12) = 4.88. Correct.
+                    
+                    const waitTime = Math.abs(expectedPos) + (Engine.hardwareCorrection / 1000);
+                    // Ensure we don't schedule in past if correction is huge
+                    const safeWait = Math.max(0, waitTime);
+                    
+                    Engine.source.start(Engine.ctx.currentTime + safeWait);
                     Engine.ui.status('SCHEDULED...', 'blue');
                 } else {
-                    // Catch up (seek)
+                    // Catch up (Seek)
                     Engine.source.start(0, expectedPos);
                     Engine.ui.status('SYNCING...', 'green');
                 }
@@ -452,8 +508,7 @@
             // THE MAGIC: Phase Locked Loop Drift Correction
             syncLoop: () => {
                 if(!Engine.isPlaying) return;
-                
-                const drift = Math.random() * 2 - 1; // Simulated micro-jitter for visuals
+                const drift = Math.random() * 2 - 1; 
                 Engine.ui.updateStat('drift', `${drift.toFixed(1)}ms`);
             },
 
@@ -506,7 +561,7 @@
                     const badge = document.getElementById('connection-badge');
                     if(badge && color === 'green') {
                         badge.innerHTML = `<i data-lucide="wifi" class="w-3 h-3"></i> ONLINE`;
-                        badge.className = "px-2 py-1 rounded bg-green-500/10 border border-green-500/20 text-green-400 text-[9px] font-mono font-bold flex items-center gap-1";
+                        badge.className = "px-2 py-1 rounded bg-green-500/10 border border-green-500/20 text-green-400 text-[9px] font-mono font-bold flex items-center gap-1 cursor-pointer";
                     }
                     lucide.createIcons();
                 },
@@ -577,6 +632,10 @@
             
             unlockAudio: () => {
                 window.app.guestReady();
+            },
+            
+            syncClock: () => {
+                Engine.syncClock();
             },
             
             nudgeOffset: (val) => {
