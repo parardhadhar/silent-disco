@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Silent Disco Sync</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: white; }
+        
+        /* Custom Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #a855f7;
+            margin-top: -8px;
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            background: #334155;
+            border-radius: 2px;
+        }
+        
+        /* Pulse Animation for Visualizer */
+        .pulse-ring {
+            animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.5; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+        
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden">
+
+    <!-- Background Decoration -->
+    <div class="absolute top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
+        <div class="absolute top-[-10%] left-[-10%] w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+        <div class="absolute top-[-10%] right-[-10%] w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+        <div class="absolute bottom-[-10%] left-[20%] w-96 h-96 bg-pink-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
+    </div>
+
+    <!-- MAIN APP CONTAINER -->
+    <div id="app" class="w-full max-w-md bg-slate-900/80 backdrop-blur-md border border-slate-700 rounded-2xl shadow-2xl p-6 relative">
+        
+        <!-- HEADER -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
+                SYNC<span class="text-white">WAVE</span>
+            </h1>
+            <p class="text-slate-400 text-xs tracking-widest mt-1">DISTRIBUTED SPEAKER SYSTEM</p>
+        </div>
+
+        <!-- VIEW: LOGIN / LANDING -->
+        <div id="view-landing" class="flex flex-col gap-4">
+            <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
+                <label class="block text-slate-400 text-sm mb-2">Your Name</label>
+                <input type="text" id="username-input" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500 transition-colors" placeholder="Enter your name...">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mt-2">
+                <button onclick="app.createRoom()" class="flex flex-col items-center justify-center p-6 bg-gradient-to-br from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-xl transition-all transform hover:scale-[1.02] shadow-lg group">
+                    <i data-lucide="mic-2" class="w-8 h-8 mb-2 text-white/90 group-hover:scale-110 transition-transform"></i>
+                    <span class="font-bold">Host Party</span>
+                </button>
+                <button onclick="app.showJoinInput()" class="flex flex-col items-center justify-center p-6 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl transition-all transform hover:scale-[1.02] shadow-lg group">
+                    <i data-lucide="headphones" class="w-8 h-8 mb-2 text-purple-400 group-hover:scale-110 transition-transform"></i>
+                    <span class="font-bold">Join Party</span>
+                </button>
+            </div>
+
+            <!-- Join Input (Hidden by default) -->
+            <div id="join-input-container" class="hidden mt-4 animate-fade-in">
+                <div class="flex gap-2">
+                    <input type="text" id="room-id-input" class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-purple-500 uppercase tracking-wider" placeholder="ROOM CODE">
+                    <button onclick="app.joinRoom()" class="bg-purple-600 hover:bg-purple-500 px-6 rounded-lg font-bold transition-colors">GO</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW: ROOM (HOST & GUEST) -->
+        <div id="view-room" class="hidden flex flex-col items-center">
+            
+            <!-- Room Code Header -->
+            <div class="flex items-center justify-between w-full mb-6 bg-slate-800/50 px-4 py-2 rounded-lg border border-slate-700">
+                <div class="flex items-center gap-2">
+                    <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span class="text-xs font-mono text-slate-300">LIVE</span>
+                </div>
+                <div class="text-sm font-mono tracking-widest text-purple-300 cursor-pointer" onclick="app.copyRoomCode()">
+                    CODE: <span id="display-room-code" class="font-bold text-white">---</span>
+                    <i data-lucide="copy" class="inline w-3 h-3 ml-1 opacity-50"></i>
+                </div>
+            </div>
+
+            <!-- Visualizer Circle -->
+            <div class="relative w-48 h-48 mb-8 flex items-center justify-center">
+                <div id="visualizer-ring" class="absolute inset-0 bg-purple-500 rounded-full opacity-20 hidden"></div>
+                <div class="w-40 h-40 bg-slate-800 rounded-full border-4 border-slate-700 flex items-center justify-center z-10 shadow-inner overflow-hidden relative">
+                     <!-- Cover Art Placeholder -->
+                     <div class="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center">
+                        <i data-lucide="music" class="w-16 h-16 text-slate-600"></i>
+                     </div>
+                </div>
+            </div>
+
+            <!-- Song Info -->
+            <div class="text-center w-full mb-6">
+                <h2 id="song-title" class="text-xl font-bold text-white truncate">Waiting for song...</h2>
+                <p id="song-status" class="text-sm text-slate-400 mt-1">Ready to Sync</p>
+            </div>
+
+            <!-- HOST CONTROLS -->
+            <div id="host-controls" class="w-full hidden flex-col gap-4">
+                <div class="relative">
+                    <select id="song-select" onchange="app.handleSongSelect()" class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white appearance-none focus:outline-none focus:border-purple-500">
+                        <option value="">Select a Track...</option>
+                        <option value="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3">Cyberpunk Beats (Electronic)</option>
+                        <option value="https://cdn.pixabay.com/download/audio/2022/03/10/audio_c8c8a73467.mp3">Lofi Study (Chill)</option>
+                        <option value="https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3">Epic Cinematic (Orchestral)</option>
+                        <option value="custom">Paste Custom URL...</option>
+                    </select>
+                    <i data-lucide="chevron-down" class="absolute right-4 top-4 w-4 h-4 text-slate-400 pointer-events-none"></i>
+                </div>
+                
+                <input type="text" id="custom-url-input" class="hidden w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-sm text-slate-300" placeholder="Paste MP3 URL here...">
+
+                <button id="play-btn" onclick="app.togglePlay()" disabled class="w-full py-4 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-xl font-bold text-lg transition-all shadow-lg flex items-center justify-center gap-2">
+                    <i data-lucide="play" class="w-5 h-5"></i>
+                    <span>START SESSION</span>
+                </button>
+            </div>
+
+            <!-- GUEST CONTROLS -->
+            <div id="guest-controls" class="w-full hidden flex-col gap-4">
+                <button id="ready-btn" onclick="app.guestReady()" class="w-full py-4 bg-green-600 hover:bg-green-500 rounded-xl font-bold text-lg animate-pulse shadow-lg border border-green-400">
+                    TAP TO UNLOCK AUDIO
+                </button>
+                <div id="waiting-msg" class="hidden text-center p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+                    <div class="flex justify-center mb-2">
+                        <span class="flex h-3 w-3 relative">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
+                        </span>
+                    </div>
+                    <p class="text-slate-300 text-sm">Audio Unlocked & Buffered</p>
+                    <p class="text-slate-500 text-xs mt-1">Waiting for Host...</p>
+                </div>
+            </div>
+
+            <!-- SYNC NUDGE (Common) -->
+            <div class="w-full mt-8 pt-6 border-t border-slate-700/50">
+                <div class="flex justify-between items-center mb-2">
+                    <label class="text-xs font-bold text-slate-400 uppercase tracking-widest">Latency Fix</label>
+                    <span id="offset-display" class="text-xs font-mono text-purple-400">0ms</span>
+                </div>
+                <input type="range" id="sync-slider" min="-500" max="500" value="0" step="10" oninput="app.updateOffset(this.value)">
+                <p class="text-[10px] text-slate-500 mt-2 text-center">
+                    Hearing an echo? Slide left or right until the beat matches.
+                </p>
+            </div>
+
+        </div>
+
+        <!-- LOADING OVERLAY -->
+        <div id="loader" class="hidden absolute inset-0 bg-slate-900/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center rounded-2xl">
+            <div class="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p id="loader-text" class="text-purple-300 font-bold animate-pulse">Loading...</p>
+        </div>
+
+    </div>
+
+    <!-- FIREBASE & APP SCRIPT -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- CONFIGURATION ---
+        
+        // YOUR FIREBASE CONFIGURATION
+        const firebaseConfig = {
+            apiKey: "AIzaSyDpTPRYhEztZ1SonOHGeKtn9_Luaj3cNIg",
+            authDomain: "silent-disco-app.firebaseapp.com",
+            projectId: "silent-disco-app",
+            storageBucket: "silent-disco-app.firebasestorage.app",
+            messagingSenderId: "266369591226",
+            appId: "1:266369591226:web:cee570515ae2bf29ff9f83",
+            measurementId: "G-MXS4T9LPBL"
+        };
+        
+        // Safe configuration loading with fallback
+        let finalConfig = firebaseConfig;
+        let finalAppId = 'silent-disco-party';
+
+        try {
+            // Attempt to read from parent window (will fail gracefully in cross-origin iframes)
+            if (typeof window.parent !== 'undefined' && window.parent.__firebase_config) {
+                finalConfig = JSON.parse(window.parent.__firebase_config);
+            }
+            if (typeof window.parent !== 'undefined' && window.parent.__app_id) {
+                finalAppId = window.parent.__app_id;
+            }
+        } catch (e) {
+            console.log("Using standalone config due to cross-origin restriction.");
+        }
+
+        const collectionPath = `artifacts/${finalAppId}/public/data/rooms`;
+
+        // Initialize Firebase
+        const fbApp = initializeApp(finalConfig);
+        const auth = getAuth(fbApp);
+        const db = getFirestore(fbApp);
+
+        // --- APP STATE ---
+        const state = {
+            user: null,
+            role: null, // 'host' or 'guest'
+            roomId: null,
+            audioCtx: null,
+            audioBuffer: null,
+            sourceNode: null,
+            gainNode: null,
+            userOffsetMs: 0,
+            serverOffsetEstimate: 0,
+            isAudioUnlocked: false,
+            currentSongUrl: null,
+            unsubscribeRoom: null,
+            isPlaying: false
+        };
+
+        // --- DOM ELEMENTS ---
+        const views = {
+            landing: document.getElementById('view-landing'),
+            room: document.getElementById('view-room')
+        };
+        const els = {
+            loader: document.getElementById('loader'),
+            loaderText: document.getElementById('loader-text'),
+            roomIdInput: document.getElementById('room-id-input'),
+            displayRoomCode: document.getElementById('display-room-code'),
+            hostControls: document.getElementById('host-controls'),
+            guestControls: document.getElementById('guest-controls'),
+            playBtn: document.getElementById('play-btn'),
+            songTitle: document.getElementById('song-title'),
+            songStatus: document.getElementById('song-status'),
+            visualizer: document.getElementById('visualizer-ring'),
+            readyBtn: document.getElementById('ready-btn'),
+            waitingMsg: document.getElementById('waiting-msg'),
+            songSelect: document.getElementById('song-select'),
+            customUrlInput: document.getElementById('custom-url-input'),
+            offsetDisplay: document.getElementById('offset-display')
+        };
+
+        // Initialize Icons
+        lucide.createIcons();
+
+        // --- AUTHENTICATION ---
+        signInAnonymously(auth).catch(console.error);
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                state.user = user;
+                console.log("Logged in:", user.uid);
+            }
+        });
+
+        // --- CORE LOGIC ---
+
+        window.app = {
+            // 1. Navigation & Setup
+            showJoinInput: () => document.getElementById('join-input-container').classList.remove('hidden'),
+            
+            setLoading: (isLoading, text = "Loading...") => {
+                els.loader.classList.toggle('hidden', !isLoading);
+                els.loaderText.innerText = text;
+            },
+
+            // 2. Room Management
+            createRoom: async () => {
+                if (!state.user) return;
+                app.setLoading(true, "Creating Party Room...");
+                const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+                state.role = 'host';
+                state.roomId = roomId;
+
+                const roomRef = doc(db, collectionPath, roomId);
+                await setDoc(roomRef, {
+                    hostId: state.user.uid,
+                    status: 'idle', // idle, playing, paused
+                    songUrl: '',
+                    startTime: null,
+                    updatedAt: serverTimestamp()
+                });
+
+                app.enterRoomUI();
+                app.subscribeToRoom(roomId);
+                app.setLoading(false);
+            },
+
+            joinRoom: () => {
+                const code = els.roomIdInput.value.trim().toUpperCase();
+                if (code.length < 3) return alert("Invalid Room Code");
+                state.role = 'guest';
+                state.roomId = code;
+                app.enterRoomUI();
+                app.subscribeToRoom(code);
+            },
+
+            enterRoomUI: () => {
+                views.landing.classList.add('hidden');
+                views.room.classList.remove('hidden');
+                els.displayRoomCode.innerText = state.roomId;
+                
+                if (state.role === 'host') {
+                    els.hostControls.classList.remove('hidden');
+                    els.hostControls.classList.add('flex');
+                    app.initAudioEngine(); // Host unlocks immediately on click
+                } else {
+                    els.guestControls.classList.remove('hidden');
+                    els.guestControls.classList.add('flex');
+                }
+            },
+
+            // 3. Audio Engine
+            initAudioEngine: () => {
+                if (!state.audioCtx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    state.audioCtx = new AudioContext();
+                    state.gainNode = state.audioCtx.createGain();
+                    state.gainNode.connect(state.audioCtx.destination);
+                    state.isAudioUnlocked = true;
+                }
+                if (state.audioCtx.state === 'suspended') {
+                    state.audioCtx.resume();
+                }
+            },
+
+            guestReady: () => {
+                // User gesture to unlock AudioContext
+                app.initAudioEngine();
+                
+                // Play silent buffer to force iOS unlock
+                const buffer = state.audioCtx.createBuffer(1, 1, 22050);
+                const source = state.audioCtx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(state.audioCtx.destination);
+                source.start(0);
+
+                els.readyBtn.classList.add('hidden');
+                els.waitingMsg.classList.remove('hidden');
+                
+                // If song already loaded in state, ensure we are ready
+                if (state.currentSongUrl) {
+                    app.loadSong(state.currentSongUrl);
+                }
+            },
+
+            handleSongSelect: () => {
+                const val = els.songSelect.value;
+                if (val === 'custom') {
+                    els.customUrlInput.classList.remove('hidden');
+                    els.customUrlInput.focus();
+                } else {
+                    els.customUrlInput.classList.add('hidden');
+                    if(val) app.broadcastSong(val);
+                }
+            },
+            
+            // Host sends song URL to DB
+            broadcastSong: async (url) => {
+                if(!url) return;
+                // If custom
+                if (els.songSelect.value === 'custom') {
+                    url = els.customUrlInput.value;
+                }
+                
+                app.setLoading(true, "Broadcasting Song...");
+                
+                // Update Firestore
+                const roomRef = doc(db, collectionPath, state.roomId);
+                await setDoc(roomRef, { songUrl: url, status: 'idle' }, { merge: true });
+                
+                // Load locally
+                await app.loadSong(url);
+                app.setLoading(false);
+                els.playBtn.disabled = false;
+                els.playBtn.innerHTML = `<i data-lucide="play" class="w-5 h-5"></i> START SESSION`;
+                lucide.createIcons();
+            },
+
+            // Load Audio Buffer (Heavy lifting)
+            loadSong: async (url) => {
+                try {
+                    state.currentSongUrl = url;
+                    els.songStatus.innerText = "Buffering...";
+                    if(state.role === 'guest') {
+                        els.readyBtn.innerText = "BUFFERING..."; 
+                        els.readyBtn.disabled = true;
+                    }
+
+                    const response = await fetch(url);
+                    const arrayBuffer = await response.arrayBuffer();
+                    state.audioBuffer = await state.audioCtx.decodeAudioData(arrayBuffer);
+                    
+                    els.songStatus.innerText = "Ready to Sync";
+                    els.songTitle.innerText = "Track Loaded";
+                    
+                    if(state.role === 'guest') {
+                        els.waitingMsg.querySelector('p').innerText = "Song Buffered. Listening for Drop...";
+                    }
+                    console.log("Audio Buffer Loaded");
+                } catch (e) {
+                    console.error(e);
+                    alert("Failed to load song. Check URL or CORS.");
+                    els.songStatus.innerText = "Error loading song";
+                }
+            },
+
+            // 4. Playback Logic
+            togglePlay: async () => {
+                if (state.isPlaying) {
+                    // STOP Logic
+                    const roomRef = doc(db, collectionPath, state.roomId);
+                    await setDoc(roomRef, { status: 'idle' }, { merge: true });
+                } else {
+                    // PLAY Logic
+                    // We set start time in future (e.g. +3 seconds)
+                    const delaySeconds = 3; 
+                    // Need server time estimate. simpler: Just write serverTimestamp to DB
+                    // But we need to know what that time IS to play locally.
+                    // Workaround: We write status 'pre-start', then Cloud Function? No functions.
+                    // Approach: Host decides time based on local clock + offset? 
+                    // Robust approach for this env:
+                    // Host writes { startTime: serverTimestamp() } and a "delay" field.
+                    // BUT host doesn't know serverTimestamp value until read back.
+                    // Simplification: Host writes { targetTime: Date.now() + 3000 } using host clock.
+                    // IF we assume NTP is decent on phones (usually within 100ms).
+                    
+                    const now = Date.now();
+                    const targetTime = now + 3000; // 3 seconds in future
+                    
+                    const roomRef = doc(db, collectionPath, state.roomId);
+                    await setDoc(roomRef, { 
+                        status: 'playing',
+                        startTimeMillis: targetTime
+                    }, { merge: true });
+                }
+            },
+
+            // 5. Sync Loop (Listening to Firestore)
+            subscribeToRoom: (roomId) => {
+                const roomRef = doc(db, collectionPath, roomId);
+                state.unsubscribeRoom = onSnapshot(roomRef, (docSnap) => {
+                    if (!docSnap.exists()) return;
+                    const data = docSnap.data();
+
+                    // 1. Check for new song
+                    if (data.songUrl && data.songUrl !== state.currentSongUrl) {
+                        app.loadSong(data.songUrl);
+                    }
+
+                    // 2. Check play status
+                    if (data.status === 'playing' && !state.isPlaying) {
+                        if (state.audioBuffer) {
+                            app.schedulePlayback(data.startTimeMillis);
+                        }
+                    } else if (data.status === 'idle' && state.isPlaying) {
+                        app.stopPlayback();
+                    }
+                });
+            },
+
+            schedulePlayback: (targetTimeMillis) => {
+                if (!state.audioCtx) return;
+                
+                // Sync Calculation
+                // We use local system time (Date.now()) vs targetTimeMillis
+                // This assumes devices have roughly correct clocks (standard on iOS/Android)
+                // The "Nudge" slider handles the error.
+                
+                const now = Date.now();
+                let delayUntilStart = targetTimeMillis - now;
+                
+                // Add user manual offset
+                delayUntilStart += parseInt(state.userOffsetMs);
+
+                if (delayUntilStart < 0) {
+                    // We are late. Start immediately at offset.
+                    const offsetSeconds = Math.abs(delayUntilStart) / 1000;
+                    app.startSource(0, offsetSeconds);
+                    els.songStatus.innerText = `Joined Late (${offsetSeconds.toFixed(1)}s)`;
+                } else {
+                    // We are early. Schedule.
+                    els.songStatus.innerText = `Dropping in ${(delayUntilStart/1000).toFixed(1)}s...`;
+                    
+                    // Visual Countdown
+                    let countdown = delayUntilStart;
+                    const timer = setInterval(() => {
+                        countdown -= 100;
+                        if(countdown <= 0) clearInterval(timer);
+                        else els.songStatus.innerText = `Dropping in ${(countdown/1000).toFixed(1)}s...`;
+                    }, 100);
+
+                    // Web Audio API scheduling
+                    // ctx.currentTime is strictly monotonic hardware time
+                    // We need to map Date.now() to ctx.currentTime
+                    const startAtCtxTime = state.audioCtx.currentTime + (delayUntilStart / 1000);
+                    app.startSource(startAtCtxTime, 0);
+                }
+            },
+
+            startSource: (when, offset) => {
+                if (state.sourceNode) {
+                    try { state.sourceNode.stop(); } catch(e){}
+                }
+                
+                state.sourceNode = state.audioCtx.createBufferSource();
+                state.sourceNode.buffer = state.audioBuffer;
+                state.sourceNode.connect(state.gainNode);
+                
+                state.sourceNode.start(when, offset);
+                state.isPlaying = true;
+                
+                // UI Update
+                els.visualizer.classList.add('pulse-ring');
+                els.visualizer.classList.remove('hidden');
+                
+                if (state.role === 'host') {
+                    els.playBtn.innerHTML = `<i data-lucide="square" class="w-5 h-5"></i> STOP SESSION`;
+                    els.playBtn.classList.replace('bg-purple-600', 'bg-red-600');
+                    els.playBtn.classList.replace('hover:bg-purple-500', 'hover:bg-red-500');
+                }
+                
+                state.sourceNode.onended = () => {
+                    state.isPlaying = false;
+                    app.stopPlayback(false); // don't trigger DB update if just finished
+                };
+            },
+
+            stopPlayback: (updateDB = false) => {
+                if (state.sourceNode) {
+                    try { state.sourceNode.stop(); } catch(e){}
+                    state.sourceNode = null;
+                }
+                state.isPlaying = false;
+                els.visualizer.classList.remove('pulse-ring');
+                els.visualizer.classList.add('hidden');
+                els.songStatus.innerText = "Session Paused";
+                
+                if (state.role === 'host') {
+                    els.playBtn.innerHTML = `<i data-lucide="play" class="w-5 h-5"></i> START SESSION`;
+                    els.playBtn.classList.replace('bg-red-600', 'bg-purple-600');
+                    els.playBtn.classList.replace('hover:bg-red-500', 'hover:bg-purple-500');
+                }
+            },
+
+            updateOffset: (val) => {
+                state.userOffsetMs = val;
+                els.offsetDisplay.innerText = (val > 0 ? `+${val}` : val) + 'ms';
+            },
+
+            copyRoomCode: () => {
+                navigator.clipboard.writeText(state.roomId);
+                const original = els.displayRoomCode.innerText;
+                els.displayRoomCode.innerText = "COPIED!";
+                setTimeout(() => els.displayRoomCode.innerText = original, 1500);
+            }
+        };
+    </script>
+</body>
+</html>
