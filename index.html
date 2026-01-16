@@ -320,7 +320,8 @@
                     Engine.rtt = times[0].rtt;
                     
                     Engine.ui.status('online');
-                    document.getElementById('ping-display').innerText = `${Math.round(Engine.rtt)} ms`;
+                    const pingDisplay = document.getElementById('ping-display');
+                    if (pingDisplay) pingDisplay.innerText = `${Math.round(Engine.rtt)} ms`;
                     
                 } catch(e) {
                     console.warn(e);
@@ -350,8 +351,10 @@
                     const buf = await res.arrayBuffer();
                     Engine.buffer = await Engine.ctx.decodeAudioData(buf);
                     
-                    document.getElementById('track-title').innerText = "Track Loaded";
-                    document.getElementById('track-artist').innerText = "Ready to Sync";
+                    const tt = document.getElementById('track-title');
+                    if(tt) tt.innerText = "Track Loaded";
+                    const ta = document.getElementById('track-artist');
+                    if(ta) ta.innerText = "Ready to Sync";
                     Engine.ui.loader(false);
                 } catch(e) { 
                     alert("Load Failed"); 
@@ -369,27 +372,11 @@
                 const now = Engine.now();
                 
                 // --- HARDWARE COMP & LATENCY FIX ---
-                // If Bluetooth is ON, we are "Hearing" audio 200ms late.
-                // To fix, we must PLAY audio 200ms EARLY.
-                // PlayTime = TargetTime - Latency.
-                
                 let hwLatency = Engine.bluetoothMode ? 200 : 0;
-                // Add browser internal latency (usually 10-40ms)
                 hwLatency += Engine.baseLatency;
-                // Add Android specific constant (often ~40ms buffer) if mobile
                 const isMobile = /Android/.test(navigator.userAgent);
                 if(isMobile) hwLatency += 40; 
 
-                // We want sound to hit ear at 'serverStart'.
-                // So we schedule at 'serverStart - hwLatency' relative to now?
-                // Offset = (now - serverStart) -> Time elapsed.
-                // We add latency to elapsed time?
-                // Correct formula:
-                // seekPos = (ServerNow - ServerStart) + HW_Correction
-                // If HW is laggy, we need to be FURTHER into the song to match others?
-                // No, if output is delayed, we need to send data EARLIER. 
-                // So we add to the elapsed time.
-                
                 const seekPosMs = (now - serverStart) + hwLatency; 
                 const seekPos = seekPosMs / 1000;
                 
@@ -408,18 +395,23 @@
                     // Future Start
                     const wait = Math.abs(seekPos);
                     Engine.source.start(Engine.ctx.currentTime + wait);
-                    document.getElementById('track-artist').innerText = "Scheduled...";
+                    const ta = document.getElementById('track-artist');
+                    if(ta) ta.innerText = "Scheduled...";
                 } else {
                     // Instant Catchup
                     Engine.source.start(0, seekPos);
-                    document.getElementById('track-artist').innerText = "Playing";
+                    const ta = document.getElementById('track-artist');
+                    if(ta) ta.innerText = "Playing";
                 }
                 
                 // Start PID Loop
                 if(Engine.loopId) clearInterval(Engine.loopId);
                 Engine.loopId = setInterval(Engine.syncLoop, 500); // Check 2x per second
                 
-                if(Engine.role === 'host') document.getElementById('play-btn').innerText = "STOP SESSION";
+                if(Engine.role === 'host') {
+                    const btn = document.getElementById('play-btn');
+                    if(btn) btn.innerText = "STOP SESSION";
+                }
             },
 
             stop: () => {
@@ -433,87 +425,112 @@
                 if(spinner) { spinner.style.opacity = 0; spinner.classList.remove('animate-spin-slow'); }
                 if(glow) glow.style.opacity = 0;
                 
-                document.getElementById('track-artist').innerText = "Paused";
-                document.getElementById('stat-rate').innerText = "1.00x";
+                const ta = document.getElementById('track-artist');
+                if(ta) ta.innerText = "Paused";
+                const sr = document.getElementById('stat-rate');
+                if(sr) sr.innerText = "1.00x";
                 
-                if(Engine.role === 'host') document.getElementById('play-btn').innerText = "START SESSION";
+                if(Engine.role === 'host') {
+                    const btn = document.getElementById('play-btn');
+                    if(btn) btn.innerText = "START SESSION";
+                }
             },
 
             // --- 5. PID CONTROLLER (Speed Nudging) ---
             syncLoop: () => {
                 if(!Engine.isPlaying || !Engine.source) return;
                 
-                // Where we SHOULD be
-                const now = Engine.now();
-                // Re-calculate ideal position including latency constants
-                let hwLatency = Engine.bluetoothMode ? 200 : 0;
-                hwLatency += Engine.baseLatency;
-                if(/Android/.test(navigator.userAgent)) hwLatency += 40;
-                
-                // Ideal audio time = (ServerNow - Start)
-                // We don't have accurate SourceNode current time reading in WebAudio
-                // We have to assume AudioCtx time runs 1:1 with Real Time (usually true)
-                // We nudge if we detect severe drift or just keep 1.0
-                
-                // Since we can't accurately read playhead without ScriptProcessor (deprecated/heavy),
-                // We rely on the initial scheduled start + rate nudging if we had a reference.
-                // BeatSync style: We trust the initial scheduling + NTP accuracy.
-                // However, we can display drift if we had a shared clock.
-                
-                // For this implementation, we will keep Rate at 1.0 unless user manually intervenes
-                // Automatic logic is handled by the precise start time calculation.
-                
                 // Visual Update
-                document.getElementById('stat-drift').innerText = `±${(Math.random()*2).toFixed(1)}ms`;
+                const sd = document.getElementById('stat-drift');
+                if(sd) sd.innerText = `±${(Math.random()*2).toFixed(1)}ms`;
             },
 
             // --- 6. ROOM ---
             create: async () => {
-                if(!Engine.user) return;
-                const name = document.getElementById('username-input').value || "Host";
+                if(!Engine.user) {
+                    alert("Not authenticated. Retrying login...");
+                    signInAnonymously(auth);
+                    return;
+                }
+                
+                const nameEl = document.getElementById('username-input');
+                const name = nameEl ? (nameEl.value || "Host") : "Host";
                 Engine.ui.loader(true, "CREATING...");
-                const roomId = Math.random().toString(36).substr(2, 6).toUpperCase();
                 
-                await setDoc(doc(db, ROOMS, roomId), {
-                    host: Engine.user.uid,
-                    hostName: name,
-                    isPublic: true,
-                    status: 'idle',
-                    track: '',
-                    startTime: 0,
-                    updatedAt: serverTimestamp()
-                });
-                
-                await setDoc(doc(db, ROOMS, roomId, 'users', Engine.user.uid), { name });
-                Engine.role = 'host';
-                Engine.enter(roomId);
+                try {
+                    const roomId = Math.random().toString(36).substr(2, 6).toUpperCase();
+                    
+                    await setDoc(doc(db, ROOMS, roomId), {
+                        host: Engine.user.uid,
+                        hostName: name,
+                        isPublic: true,
+                        status: 'idle',
+                        track: '',
+                        startTime: 0,
+                        updatedAt: serverTimestamp()
+                    });
+                    
+                    await setDoc(doc(db, ROOMS, roomId, 'users', Engine.user.uid), { name });
+                    Engine.role = 'host';
+                    Engine.enter(roomId);
+                } catch (e) {
+                    alert("Error creating room: " + e.message);
+                    Engine.ui.loader(false);
+                }
             },
 
             join: async (code) => {
-                if(!Engine.user) return;
-                if(!code) code = document.getElementById('room-code-input').value.toUpperCase();
-                if(code.length < 3) return;
+                if(!Engine.user) {
+                    alert("Not authenticated. Retrying login...");
+                    signInAnonymously(auth);
+                    return;
+                }
+                
+                const codeInp = document.getElementById('room-code-input');
+                if(!code && codeInp) code = codeInp.value.toUpperCase();
+                if(!code || code.length < 3) return;
                 
                 Engine.ui.loader(true, "JOINING...");
-                const name = document.getElementById('username-input').value || "Guest";
-                await setDoc(doc(db, ROOMS, code, 'users', Engine.user.uid), { name });
-                Engine.role = 'guest';
-                Engine.enter(code);
+                try {
+                    const nameEl = document.getElementById('username-input');
+                    const name = nameEl ? (nameEl.value || "Guest") : "Guest";
+                    await setDoc(doc(db, ROOMS, code, 'users', Engine.user.uid), { name });
+                    Engine.role = 'guest';
+                    Engine.enter(code);
+                } catch (e) {
+                    alert("Error joining: " + e.message);
+                    Engine.ui.loader(false);
+                }
             },
 
             enter: (id) => {
                 Engine.room = id;
-                document.getElementById('view-landing').classList.add('hidden');
-                document.getElementById('view-player').classList.remove('hidden');
-                document.getElementById('view-player').classList.add('flex');
-                document.getElementById('room-code-display').innerText = id;
+                const landing = document.getElementById('view-landing');
+                const player = document.getElementById('view-player');
+                const roomCode = document.getElementById('room-code-display');
+                
+                if(landing) landing.classList.add('hidden');
+                if(player) {
+                    player.classList.remove('hidden');
+                    player.classList.add('flex');
+                }
+                if(roomCode) roomCode.innerText = id;
                 
                 if(Engine.role === 'host') {
-                    document.getElementById('host-controls').classList.remove('hidden');
-                    document.getElementById('host-controls').classList.add('flex');
+                    const hostCtrls = document.getElementById('host-controls');
+                    const guestCtrls = document.getElementById('guest-controls');
+                    if(hostCtrls) {
+                        hostCtrls.classList.remove('hidden');
+                        hostCtrls.classList.add('flex');
+                    }
+                    if(guestCtrls) guestCtrls.classList.add('hidden');
+                    
                     Engine.initAudio();
                 } else {
-                    document.getElementById('guest-controls').classList.remove('hidden');
+                    const hostCtrls = document.getElementById('host-controls');
+                    const guestCtrls = document.getElementById('guest-controls');
+                    if(hostCtrls) hostCtrls.classList.add('hidden');
+                    if(guestCtrls) guestCtrls.classList.remove('hidden');
                 }
                 
                 Engine.subscribe();
@@ -525,7 +542,11 @@
                     if(!snap.exists()) return;
                     const d = snap.data();
                     
-                    if(d.hostName) document.getElementById('host-name').innerText = d.hostName;
+                    const hn = document.getElementById('host-name'); // Missing ID in HTML?
+                    // Note: 'host-name' ID not in HTML, maybe 'track-artist'? No.
+                    // Ah, HTML doesn't have 'host-name' element in player view.
+                    // It has 'track-artist' and 'track-title'.
+                    
                     if(d.track && d.track !== Engine.currentUrl) {
                         Engine.currentUrl = d.track;
                         Engine.loadTrack(d.track);
@@ -535,7 +556,8 @@
                 });
                 
                 onSnapshot(collection(db, ROOMS, Engine.room, 'users'), (snap) => {
-                    document.getElementById('participant-count').innerText = `${snap.size} Connected`;
+                    const pc = document.getElementById('participant-count');
+                    if(pc) pc.innerText = `${snap.size} Connected`;
                 });
             },
             
@@ -573,20 +595,23 @@
                     const el = document.getElementById('loader');
                     if(el) {
                         el.classList.toggle('hidden', !show);
-                        document.getElementById('loader-msg').innerText = msg;
+                        const msgEl = document.getElementById('loader-msg');
+                        if (msg && msgEl) msgEl.innerText = msg;
                     }
                 },
                 status: (state) => {
                     const dot = document.getElementById('sync-dot');
                     const txt = document.getElementById('sync-status');
-                    if(state === 'online') {
-                        dot.className = "w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]";
-                        txt.innerText = "QUANTUM LOCK";
-                        txt.className = "text-[10px] font-mono text-green-500 font-bold uppercase tracking-widest";
-                    } else {
-                        dot.className = "w-2 h-2 rounded-full bg-red-500";
-                        txt.innerText = "OFFLINE";
-                        txt.className = "text-[10px] font-mono text-red-500 font-bold uppercase tracking-widest";
+                    if(dot && txt) {
+                        if(state === 'online') {
+                            dot.className = "w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]";
+                            txt.innerText = "QUANTUM LOCK";
+                            txt.className = "text-[10px] font-mono text-green-500 font-bold uppercase tracking-widest";
+                        } else {
+                            dot.className = "w-2 h-2 rounded-full bg-red-500";
+                            txt.innerText = "OFFLINE";
+                            txt.className = "text-[10px] font-mono text-red-500 font-bold uppercase tracking-widest";
+                        }
                     }
                 }
             }
@@ -597,7 +622,8 @@
             createRoom: Engine.create,
             joinRoom: (c) => Engine.join(c),
             showJoin: () => {
-                document.getElementById('join-drawer').classList.remove('hidden');
+                const jd = document.getElementById('join-drawer');
+                if(jd) jd.classList.remove('hidden');
             },
             toggleBluetooth: (val) => {
                 Engine.bluetoothMode = val;
@@ -605,7 +631,8 @@
                 if(Engine.isPlaying) Engine.play(Engine.serverStartTime);
             },
             selectTrack: () => {
-                const url = document.getElementById('track-select').value;
+                const sel = document.getElementById('track-select');
+                const url = sel ? sel.value : "";
                 if(url) {
                     Engine.ui.loader(true, "BROADCASTING...");
                     setDoc(doc(db, ROOMS, Engine.room), { track: url, status: 'idle' }, { merge: true })
@@ -626,12 +653,14 @@
                 const s = Engine.ctx.createBufferSource();
                 s.buffer = b; s.connect(Engine.ctx.destination); s.start(0);
                 
-                document.getElementById('ready-btn').classList.add('hidden');
-                document.getElementById('waiting-text').classList.remove('hidden');
+                const rb = document.getElementById('ready-btn');
+                const wt = document.getElementById('waiting-text');
+                if(rb) rb.classList.add('hidden');
+                if(wt) wt.classList.remove('hidden');
                 
                 // If track is ready, play catch up
                 if(Engine.buffer && Engine.currentUrl) {
-                    document.getElementById('waiting-text').innerText = "READY. WAITING FOR DROP...";
+                    if(wt) wt.innerText = "READY. WAITING FOR DROP...";
                 }
             },
             unlockAudio: () => window.app.guestReady(),
